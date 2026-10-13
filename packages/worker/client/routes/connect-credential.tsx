@@ -54,7 +54,7 @@ import {
 	type AccountCredentialsResponse,
 	credentialKindLabel,
 } from '#universal/credentials-list.ts'
-import { orgResourcePath } from '#universal/org-pages.ts'
+import { orgResourcePath, orgSlugFromPathname } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	cardCss,
@@ -260,7 +260,8 @@ export function ConnectCredentialRoute(handle: Handle) {
 		state: KeyFormState
 		existing: CredentialListItem | null
 		orgSlug: string
-		forNeed: { packageKodyId: string; needKey: string } | null
+		/** Only on org paths: an org-less link cannot say which org owns the package. */
+		forNeed: { orgSlug: string; packageKodyId: string; needKey: string } | null
 		prompt: (error: string) => string
 		packages: AccountCredentialsResponse['packages']
 		linkProblem: string | null
@@ -281,7 +282,6 @@ export function ConnectCredentialRoute(handle: Handle) {
 			const approvalHref =
 				saved && input.forNeed
 					? credentialNeedApprovalHref({
-							orgSlug: input.orgSlug,
 							...input.forNeed,
 							credentialId: saved.id,
 						})
@@ -585,6 +585,9 @@ export function ConnectCredentialRoute(handle: Handle) {
 		const search = new URL(href, 'http://localhost').searchParams
 		const query = parseCredentialCreateQuery(search)
 		const orgSlug = data?.orgSlug ?? ''
+		const pathOrgSlug = orgSlugFromPathname(
+			new URL(href, 'http://localhost').pathname,
+		)
 		const selected = query.kind
 		const kinds = query.kindLocked && selected ? [selected] : credentialKinds
 		const matches = data ? findMatchingCredentials(data.credentials, query) : []
@@ -665,8 +668,9 @@ export function ConnectCredentialRoute(handle: Handle) {
 										packages,
 										linkProblem,
 										forNeed:
-											query.packageKodyId && query.needKey
+											pathOrgSlug && query.packageKodyId && query.needKey
 												? {
+														orgSlug: pathOrgSlug,
 														packageKodyId: query.packageKodyId,
 														needKey: query.needKey,
 													}

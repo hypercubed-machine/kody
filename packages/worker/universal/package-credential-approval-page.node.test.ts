@@ -98,6 +98,9 @@ test('before and after read inherit, none, and credentials', () => {
 	expect(approvalChangeIsNoop(change({ before: [bot] }))).toBe(true)
 	expect(approvalChangeIsNoop(change({ before: null }))).toBe(false)
 	expect(approvalChangeIsNoop(change({ before: [mine] }))).toBe(false)
+	expect(
+		approvalChangeIsNoop(change({ before: [bot, mine], after: [mine, bot] })),
+	).toBe(false)
 })
 
 test('the approve button names the mappings and each trigger it turns on', () => {
