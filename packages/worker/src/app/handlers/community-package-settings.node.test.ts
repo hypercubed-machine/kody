@@ -173,7 +173,7 @@ test('package settings Files tab uses the listing default branch and id', async 
 	)
 })
 
-test('package credential tabs 404 outside the package org and keep the tab on a move', async () => {
+test('package credential tabs 404 outside the package org or on plain repos and keep the tab on a move', async () => {
 	const handler = createCommunityPackageCredentialsHandler(
 		{} as Env,
 		'mappings',
@@ -190,6 +190,7 @@ test('package credential tabs 404 outside the package org and keep the tab on a 
 		kodyId: 'digest',
 		listing: null,
 		ownerPackage: { id: 'pkg-1', name: 'digest', isPrivate: true },
+		hasPackage: true,
 		viewerIsOwner: false,
 		viewerCanManage: false,
 		loggedIn: true,
@@ -198,6 +199,13 @@ test('package credential tabs 404 outside the package org and keep the tab on a 
 
 	mockModule.renderAppPage.mockClear()
 	mockModule.loadPackagePage.mockResolvedValue(page)
+	expect((await requestTab()).status).toBe(404)
+
+	mockModule.loadPackagePage.mockResolvedValue({
+		...page,
+		viewerIsOwner: true,
+		hasPackage: false,
+	})
 	expect((await requestTab()).status).toBe(404)
 
 	mockModule.renderAppPage.mockClear()
