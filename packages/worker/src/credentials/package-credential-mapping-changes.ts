@@ -9,6 +9,14 @@ import {
 	type DeclaredTrigger,
 } from '#worker/enablements/service.ts'
 import {
+	commitOrgAuditOutbox,
+	orgAuditOutboxInsertStatement,
+	orgAuditWriterFromRequest,
+	planOrgAuditOutbox,
+	type OrgAuditOutboxPlan,
+	type OrgAuditWriter,
+} from '#worker/orgs/org-audit.ts'
+import {
 	type CredentialApprovalChangeView,
 	type CredentialApprovalErrorCode,
 	type CredentialMappingChange,
@@ -32,6 +40,9 @@ import {
 	viewerEnablement,
 	type PackageMappingScope,
 } from './package-credential-mappings.ts'
+
+/** One org audit row per mapping create, update, or clear. Never holds values. */
+export const credentialMappingUpdateAuditAction = 'credential.mapping.update'
 
 /** At most this many refs in one mapping for a `multiple` need. */
 export const maxMappedCredentials = 16
@@ -301,9 +312,37 @@ export async function resolveMappingChanges(
 	})
 }
 
+function mappingAuditPlan(
+	audit: OrgAuditWriter,
+	scope: PackageMappingScope,
+	change: ResolvedMappingChange,
+): OrgAuditOutboxPlan {
+	const trigger =
+		change.target.type === 'trigger' ? change.target.trigger : null
+	return planOrgAuditOutbox(audit, {
+		orgId: scope.savedPackage.userId,
+		action: credentialMappingUpdateAuditAction,
+		resourceType: 'package',
+		resourceId: scope.savedPackage.id,
+		details: {
+			packageId: scope.savedPackage.id,
+			kodyId: scope.savedPackage.kodyId,
+			needKey: change.needKey,
+			target: change.target,
+			trigger,
+			beforeCredentialIds: change.before?.map((ref) => ref.id) ?? null,
+			afterCredentialIds: change.credentialIds,
+			willEnable: change.willEnable,
+		},
+	})
+}
+
 /**
  * Writes resolved changes in one batch, turning on any trigger a change maps
- * for the first time. Every change must have resolved without an error.
+ * for the first time, and records one `credential.mapping.update` org audit
+ * row per written mapping (actor and automation credential from the request;
+ * package, trigger, need, and old/new credential ids in details — never
+ * values). Every change must have resolved without an error.
  */
 export async function writeMappingChanges(
 	scope: PackageMappingScope,
@@ -314,10 +353,12 @@ export async function writeMappingChanges(
 		throw new Error('Refusing to write mapping changes that have errors.')
 	}
 	const db = scope.env.APP_DB
+	const audit = orgAuditWriterFromRequest(scope.env, scope.request)
 	const enableStatements: Array<D1PreparedStatement> = []
 	const prepares: Array<() => Promise<void>> = []
 	const enabledIds = new Map<DeclaredTrigger, string>()
 	const statements: Array<D1PreparedStatement> = []
+	const auditPlans: Array<OrgAuditOutboxPlan> = []
 	for (const change of resolved) {
 		let rowTarget = change.rowTarget
 		if (!rowTarget && change.willEnable && change.trigger) {
@@ -360,8 +401,16 @@ export async function writeMappingChanges(
 				now,
 			}),
 		)
+		auditPlans.push(mappingAuditPlan(audit, scope, change))
 	}
 	for (const prepare of prepares) await prepare()
-	const batch = [...enableStatements, ...statements]
+	const batch = [
+		...enableStatements,
+		...statements,
+		...auditPlans.map((plan) => orgAuditOutboxInsertStatement(db, plan)),
+	]
 	if (batch.length > 0) await db.batch(batch)
+	for (const plan of auditPlans) {
+		await commitOrgAuditOutbox({ ...audit, appDb: db }, plan)
+	}
 }
