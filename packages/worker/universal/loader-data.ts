@@ -1354,7 +1354,17 @@ export type OrgGrantView = {
 export type OrgGrantsLoaderData = {
 	ok: true
 	org: OrgManagementOrg
-	grants: Array<OrgGrantView>
+	grants: Array<
+		OrgGrantView & {
+			/**
+			 * True when `authorizeGrantRevoke` allows this viewer to revoke the
+			 * grant. Denial (including a missing resource permission) is false.
+			 * The page still requires `canManage` (`member:write`) before showing
+			 * Revoke, matching the delete handler.
+			 */
+			canRevoke: boolean
+		}
+	>
 	canManage: boolean
 }
 
@@ -2015,6 +2025,11 @@ export type AccountPackageListItem = {
 	 */
 	isInternetVisible: boolean
 	hasCommunityListing: boolean
+	/**
+	 * True when an active community listing pin lags `publishedCommit`.
+	 * Owners use Update public listing on settings to move the catalog pin.
+	 */
+	listingNeedsRepublish: boolean
 	listingAhead: AccountPackageListingAhead | null
 	forkAhead: AccountPackageForkAhead | null
 }
@@ -2056,6 +2071,15 @@ type AccountPackagePublishDiffFile = {
 	patch: string | null
 }
 
+/** Catalog listing pin lags the package runtime published commit. */
+export type AccountPackageListingBehindHint = {
+	pinnedVersion: string | null
+	promotedVersion: string | null
+	behind: true
+	updateHint: string
+	updateUrl: string
+}
+
 export type AccountPackageApprovePublishLoaderData = {
 	ok: true
 	email: string
@@ -2077,6 +2101,17 @@ export type AccountPackageApprovePublishLoaderData = {
 	pendingIsDefaultHead: boolean
 	filesHref: string
 	packageHref: string
+	/**
+	 * When an active community listing pin is behind the current published
+	 * commit, how to update the public catalog (settings Update public listing).
+	 */
+	listing: AccountPackageListingBehindHint | null
+	/**
+	 * True when promoting the pending commit would leave the catalog pin
+	 * behind. Shown as copy on the promote step; the settings link appears
+	 * only after promote (see promote response `listing`).
+	 */
+	listingWillLagAfterPromote: boolean
 	diff: {
 		files: Array<AccountPackagePublishDiffFile>
 		omittedCount: number
@@ -2092,8 +2127,8 @@ export type AccountPackagePendingApproval = {
 	createdAt: string
 	/** One line per credential need the paused publish adds or reshapes. */
 	changes: Array<string>
-	/** The POST action that approves it, or null when this page cannot yet. */
-	approveAction: 'approve-credential-needs' | null
+	/** The POST action that approves it. */
+	approveAction: 'approve-credential-needs' | 'approve-went-public'
 }
 
 export type AccountPackageApproveCapabilitiesLoaderData = {

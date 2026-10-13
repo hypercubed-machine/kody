@@ -18,9 +18,19 @@ import {
 	serializeDependencySnapshot,
 	type PackageDependencySnapshot,
 } from './dependency-snapshot.ts'
-import { updateSavedPackage } from '#worker/package-registry/repo.ts'
+import {
+	getSavedPackageById,
+	nextSavedPackageUpdatedAt,
+	updateSavedPackage,
+} from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import {
+	getPendingPackageApprovalRequest,
+	resolvePackageApprovalRequest,
+	type PackageApprovalRequest,
+} from './approval-requests-repo.ts'
+import { enqueueWentPublicApproval } from './went-public-approval.ts'
 
 export type CapabilityApprovalSummary = {
 	capabilitySet: CapabilitySet
@@ -120,6 +130,8 @@ export async function approvePackageCapabilitySet(input: {
 }): Promise<{
 	approval: PackageCapabilityApprovalRecord
 	capabilitySet: CapabilitySet
+	/** Pending `went_public` request when this approve is the path to going public. */
+	wentPublicRequest: PackageApprovalRequest | null
 }> {
 	const summary = await loadCapabilityApprovalSummary({
 		env: input.env,
@@ -204,30 +216,68 @@ export async function approvePackageCapabilitySet(input: {
 		throw new CapabilityApprovalError('Could not record capability approval.')
 	}
 
+	// Going public pauses on the shared approval queue (`went_public`). The
+	// owner Approves that request to flip internet-visible. Re-approving an
+	// already-public package only refreshes the capability pin (storage-change
+	// trigger stays on the fingerprint match, not the queue).
+	let wentPublicRequest: PackageApprovalRequest | null = null
 	if (!input.savedPackage.isInternetVisible) {
-		const changed = await updateSavedPackage(input.env.APP_DB, {
-			userId: input.ownerUserId,
-			packageId: input.savedPackage.id,
-			isInternetVisible: true,
+		wentPublicRequest = await enqueueWentPublicApproval({
+			env: input.env,
+			ownerUserId: input.ownerUserId,
+			savedPackage: input.savedPackage,
+			publishedCommit: summary.publishedCommit,
+			fingerprint: summary.capabilitySet.fingerprint,
+			requestedByUserId: input.actorUserId,
 		})
-		if (!changed) {
-			throw new CapabilityApprovalError('Package not found.')
-		}
 	}
 
-	return { approval, capabilitySet: summary.capabilitySet }
+	return {
+		approval,
+		capabilitySet: summary.capabilitySet,
+		wentPublicRequest,
+	}
 }
 
 export async function clearInternetVisible(input: {
 	env: Env
 	ownerUserId: OwnerId | string
 	packageId: string
+	/** Who turned internet-visible off; supersedes a pending went_public. */
+	actorUserId?: string | null
 }): Promise<boolean> {
-	return updateSavedPackage(input.env.APP_DB, {
+	// Supersede first so a concurrent Approve cannot claim the pending row
+	// after we decide to turn public serving off.
+	const pending = await getPendingPackageApprovalRequest(input.env.APP_DB, {
+		packageId: input.packageId,
+		ownerUserId: input.ownerUserId,
+		reason: 'went_public',
+	})
+	if (pending) {
+		await resolvePackageApprovalRequest(input.env.APP_DB, {
+			id: pending.id,
+			status: 'superseded',
+			resolvedByUserId: input.actorUserId ?? null,
+		})
+	}
+	const live = await getSavedPackageById(input.env.APP_DB, {
+		userId: input.ownerUserId,
+		packageId: input.packageId,
+	})
+	if (!live) {
+		return pending != null
+	}
+	// Always advance updated_at past the live stamp so a concurrent approve
+	// that claimed the row then CAS-enables on the old stamp fails closed.
+	const changed = await updateSavedPackage(input.env.APP_DB, {
 		userId: input.ownerUserId,
 		packageId: input.packageId,
 		isInternetVisible: false,
+		updatedAt: nextSavedPackageUpdatedAt(live.updatedAt),
 	})
+	// Package missing → false. Already-off with a superseded pending → true so
+	// MCP/settings can cancel a went_public without requiring the flag on.
+	return changed || pending != null
 }
 
 export function approvalMatchesCurrentSet(input: {
