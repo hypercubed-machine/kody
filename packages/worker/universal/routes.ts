@@ -214,6 +214,8 @@ export const routes = route({
 	orgBillingPortal: get('/@:orgSlug/-/billing/portal'),
 	orgConnections: get('/@:orgSlug/-/connections(/*rest)'),
 	orgCredentials: get('/@:orgSlug/-/credentials(/*rest)'),
+	// The credential creation one-pager for this org.
+	orgCredentialNew: get('/@:orgSlug/-/credentials/new'),
 	orgEmail: get('/@:orgSlug/-/email(/*rest)'),
 	orgIntegrations: get('/@:orgSlug/-/integrations(/*rest)'),
 	orgJobs: get('/@:orgSlug/-/jobs(/*rest)'),
