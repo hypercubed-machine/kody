@@ -29,7 +29,11 @@ export function createConnectCredentialHandler(env: Env) {
 			const { search } = new URL(request.url)
 			return new Response(null, {
 				status: 302,
-				headers: { Location: signupOrgCredentialCreateHref(user, search) },
+				headers: {
+					Location: signupOrgCredentialCreateHref(user, search),
+					// The target depends on who is signed in.
+					'Cache-Control': 'private, no-store',
+				},
 			})
 		},
 	} satisfies Action<typeof routes.connectCredential>
