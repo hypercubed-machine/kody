@@ -330,6 +330,10 @@ MCP and API tokens cannot reach it.
   `canEdit: false`, and no `mappings` (its overrides are theirs).
 - `incomplete` lists the default per need, plus each trigger the viewer has
   turned on (a trigger that is off never runs).
+- Every written mapping (create, update, or clear), including Approve, records
+  one `credential.mapping.update` org audit event. The row names the actor and
+  automation credential (kind/id), and details carry package, trigger (when
+  applicable), need, and old/new credential ids — never values.
 
 Who can write:
 
