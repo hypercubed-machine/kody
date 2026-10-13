@@ -84,11 +84,17 @@ export function createPackageMappingEditor(
 	},
 ) {
 	let open: OpenEditor | null = null
+	let session = 0
 
 	function update(next: Partial<OpenEditor>) {
 		if (!open) return
 		open = { ...open, ...next }
 		handle.update()
+	}
+
+	function openEditor(next: OpenEditor | null) {
+		session += 1
+		open = next
 	}
 
 	async function save(input: MappingCellInput) {
@@ -108,16 +114,20 @@ export function createPackageMappingEditor(
 			return
 		}
 		update({ saving: true, messages: [] })
+		const started = session
 		const page = options.readPage()
 		const result = await postPackageCredentialChanges({
 			username: page.username,
 			kodyId: page.kodyId,
 			changes: [planned.change],
 		})
+		if (result.kind === 'saved') options.onSaved(result.view)
+		// The editor was closed or replaced (a tab change resets it) while
+		// the write was in flight; its outcome belongs to that old form.
+		if (session !== started) return
 		switch (result.kind) {
 			case 'saved':
-				open = null
-				options.onSaved(result.view)
+				openEditor(null)
 				handle.update()
 				return
 			case 'refused':
@@ -275,7 +285,7 @@ export function createPackageMappingEditor(
 						mix={[
 							css(secondaryButtonCss),
 							on('click', () => {
-								open = null
+								openEditor(null)
 								handle.update()
 							}),
 						]}
@@ -309,14 +319,14 @@ export function createPackageMappingEditor(
 						mix={[
 							css(linkButtonCss),
 							on('click', () => {
-								open = {
+								openEditor({
 									key,
 									target: input.target,
 									needKey: input.need.key,
 									draft: draftFromStored(input.stored),
 									saving: false,
 									messages: [],
-								}
+								})
 								handle.update()
 							}),
 						]}
@@ -331,7 +341,7 @@ export function createPackageMappingEditor(
 	return {
 		renderCell,
 		reset() {
-			open = null
+			openEditor(null)
 		},
 	}
 }
