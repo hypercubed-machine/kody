@@ -24,6 +24,7 @@ import {
 	credentialCreateTitle,
 	expiresAtDateValue,
 	expiresAtHasTime,
+	existingKindConflict,
 	findExistingOrgKey,
 	findMatchingCredentials,
 	isValueFormKind,
@@ -201,6 +202,12 @@ export function ConnectCredentialRoute(handle: Handle) {
 			current.name,
 			keyFormPackageId(current, kind),
 		)
+		const kindConflict = existingKindConflict(existing, kind)
+		if (kindConflict) {
+			message = kindConflict
+			handle.update()
+			return
+		}
 		if (existing && !current.replaceExisting) {
 			message = `A credential named ${current.name.trim()} already exists. Choose “Replace it” or pick another name.`
 			handle.update()
@@ -258,6 +265,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 	}) {
 		const { kind, state, existing } = input
 		const isKey = kind === 'secret'
+		const kindConflict = existingKindConflict(existing, kind)
 		const update = (patch: Partial<KeyFormState>) => {
 			form = { ...state, ...patch }
 			handle.update()
@@ -331,7 +339,14 @@ export function ConnectCredentialRoute(handle: Handle) {
 							)}
 						</span>
 					</div>
-					{existing ? (
+					{kindConflict ? (
+						<p
+							mix={css(errorCss)}
+							data-testid="connect-credential-kind-conflict"
+						>
+							{kindConflict}
+						</p>
+					) : existing ? (
 						<label
 							mix={css({
 								display: 'flex',
@@ -343,9 +358,16 @@ export function ConnectCredentialRoute(handle: Handle) {
 								type="checkbox"
 								checked={state.replaceExisting}
 								data-testid="connect-credential-replace"
-								mix={on('change', (event) =>
-									update({ replaceExisting: event.currentTarget.checked }),
-								)}
+								mix={on('change', (event) => {
+									const replaceExisting = event.currentTarget.checked
+									update({
+										replaceExisting,
+										provider:
+											replaceExisting && !state.provider.trim()
+												? (existing.provider ?? '')
+												: state.provider,
+									})
+								})}
 							/>
 							<span>
 								{isKey ? (
@@ -517,7 +539,9 @@ export function ConnectCredentialRoute(handle: Handle) {
 					) : null}
 					<button
 						type="submit"
-						disabled={saving || input.linkProblem !== null}
+						disabled={
+							saving || input.linkProblem !== null || kindConflict !== null
+						}
 						data-testid="connect-credential-save"
 						mix={css(primaryButtonCss)}
 					>

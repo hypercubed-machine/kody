@@ -137,6 +137,18 @@ export function findExistingOrgKey(
 }
 
 /**
+ * Why the form cannot save over `existing`: it is another kind in the same
+ * name namespace, and replacing its value would not change its kind.
+ */
+export function existingKindConflict(
+	existing: CredentialListItem | null,
+	kind: CredentialKind,
+) {
+	if (!existing || existing.kind === kind) return null
+	return `A ${credentialKindLabel(existing.kind)} credential named ${existing.name} already exists. Pick another name.`
+}
+
+/**
  * Credentials that may already satisfy the link: the same kind (when the link
  * names one) and, when the link names a provider, the same provider.
  */
@@ -407,7 +419,10 @@ export function buildKeySaveBody(input: {
 		scope,
 		packageId,
 		description: form.description.trim(),
-		provider: form.provider.trim() || null,
+		// An empty string clears the provider of the credential being replaced.
+		provider:
+			form.provider.trim() ||
+			(replacing && input.existing?.provider ? '' : null),
 		expiresAt:
 			form.expiresAt.trim() ||
 			(replacing ? (input.existing?.expiresAt ?? null) : null),

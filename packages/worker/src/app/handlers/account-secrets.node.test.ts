@@ -1210,7 +1210,15 @@ test('account secrets save sets the provider from a creation link on org Keys on
 	)
 
 	mockModule.updateCredentialFields.mockClear()
+	expect((await save({ scope: 'user', provider: '' })).status).toBe(200)
+	expect(mockModule.updateCredentialFields).toHaveBeenCalledWith(
+		expect.objectContaining({ update: { provider: null } }),
+	)
+
+	mockModule.updateCredentialFields.mockClear()
 	expect((await save({ scope: 'user' })).status).toBe(200)
+	expect((await save({ scope: 'user', provider: null })).status).toBe(200)
+	expect(mockModule.updateCredentialFields).not.toHaveBeenCalled()
 	mockModule.listSavedPackagesByUserId.mockResolvedValueOnce([
 		{
 			id: 'pkg-1',
