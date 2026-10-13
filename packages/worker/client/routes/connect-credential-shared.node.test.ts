@@ -197,6 +197,17 @@ test('package Keys, expiry, and package locks come from the link and save like t
 			allowedPackages: [],
 		},
 	})
+	expect(
+		buildKeySaveBody({
+			kind: 'url',
+			form: {
+				...packageForm,
+				value: 'https://hooks.example.com/abc',
+				hosts: 'hooks.example.com',
+			},
+			existing: null,
+		}),
+	).toMatchObject({ ok: true, body: { scope: 'user', packageId: null } })
 
 	const lockedForm = createKeyFormState(
 		query('name=TOKEN&allowedPackages=pkg-2,pkg-1'),
@@ -259,13 +270,21 @@ test('a link the form cannot honor says why, and a package Key needs its package
 	expect(createKeyFormState(query('expiresAt=soon')).expiresAt).toBe('')
 	expect(problem('scope=package')).toContain('names no package')
 	expect(problem('packageId=pkg-404')).toContain('not in this org')
+	expect(problem('kind=url&packageId=pkg-1')).toContain(
+		'Only a Key can belong to one package',
+	)
+	expect(problem('kind=url&allowedPackages=pkg-1')).toBeNull()
+	const packageScopeNoId = {
+		...createKeyFormState(query('name=x')),
+		packageScope: 'package' as const,
+	}
+	expect(keyFormProblem(packageScopeNoId, 'secret')).toBe(
+		'Choose the package this key belongs to.',
+	)
+	expect(keyFormProblem(packageScopeNoId, 'url')).toBeNull()
 	expect(
-		keyFormProblem({
-			...createKeyFormState(query('name=x')),
-			packageScope: 'package',
-		}),
-	).toBe('Choose the package this key belongs to.')
-	expect(keyFormProblem(createKeyFormState(query('name=x')))).toBeNull()
+		keyFormProblem(createKeyFormState(query('name=x')), 'secret'),
+	).toBeNull()
 })
 
 test('matches need a provider, and a kind when the link names one', () => {
