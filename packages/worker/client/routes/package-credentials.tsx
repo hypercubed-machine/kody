@@ -112,14 +112,20 @@ export function PackageCredentialsRoute(handle: Handle) {
 	 * The latest saved view, shown until a GET that started after that write
 	 * lands; a GET already in flight (or router loader data) may predate it.
 	 */
-	let saved: { view: PackageCredentialsView; writes: number } | null = null
+	let saved: {
+		view: PackageCredentialsView
+		writes: number
+		packageKey: string
+	} | null = null
+	const packageKey = (target: { username: string; kodyId: string }) =>
+		`${target.username}/${target.kodyId}`
 	let reloadRequestedFor: PackageCredentialsView | null = null
 	const editor = createPackageMappingEditor(handle, {
 		readPage: () => page,
-		onSaved(view) {
-			if (view.package.kodyId === page.kodyId) {
+		onSaved(view, postedTo) {
+			if (packageKey(postedTo) === packageKey(page)) {
 				writes += 1
-				saved = { view, writes }
+				saved = { view, writes, packageKey: packageKey(page) }
 				handle.update()
 			}
 		},
@@ -130,7 +136,7 @@ export function PackageCredentialsRoute(handle: Handle) {
 		currentHref: string,
 		pending: boolean,
 	) {
-		if (!saved || saved.view.package.kodyId !== page.kodyId) return loaded
+		if (!saved || saved.packageKey !== packageKey(page)) return loaded
 		if (!loaded) return saved.view
 		if (saved.view.package.id !== loaded.package.id) return loaded
 		if ((fetchedAfterWrites.get(loaded) ?? -1) >= saved.writes) {
