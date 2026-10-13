@@ -25,6 +25,7 @@ import {
 	credentialNeedApprovalHref,
 	expiresAtDateValue,
 	expiresAtHasTime,
+	existingKindConflict,
 	findExistingOrgKey,
 	findMatchingCredentials,
 	isValueFormKind,
@@ -53,7 +54,7 @@ import {
 	type AccountCredentialsResponse,
 	credentialKindLabel,
 } from '#universal/credentials-list.ts'
-import { orgResourcePath } from '#universal/org-pages.ts'
+import { orgResourcePath, orgSlugFromPathname } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	cardCss,
@@ -202,6 +203,12 @@ export function ConnectCredentialRoute(handle: Handle) {
 			current.name,
 			keyFormPackageId(current, kind),
 		)
+		const kindConflict = existingKindConflict(existing, kind)
+		if (kindConflict) {
+			message = kindConflict
+			handle.update()
+			return
+		}
 		if (existing && !current.replaceExisting) {
 			message = `A credential named ${current.name.trim()} already exists. Choose “Replace it” or pick another name.`
 			handle.update()
@@ -253,13 +260,15 @@ export function ConnectCredentialRoute(handle: Handle) {
 		state: KeyFormState
 		existing: CredentialListItem | null
 		orgSlug: string
-		forNeed: { packageKodyId: string; needKey: string } | null
+		/** Only on org paths: an org-less link cannot say which org owns the package. */
+		forNeed: { orgSlug: string; packageKodyId: string; needKey: string } | null
 		prompt: (error: string) => string
 		packages: AccountCredentialsResponse['packages']
 		linkProblem: string | null
 	}) {
 		const { kind, state, existing } = input
 		const isKey = kind === 'secret'
+		const kindConflict = existingKindConflict(existing, kind)
 		const update = (patch: Partial<KeyFormState>) => {
 			form = { ...state, ...patch }
 			handle.update()
@@ -273,7 +282,6 @@ export function ConnectCredentialRoute(handle: Handle) {
 			const approvalHref =
 				saved && input.forNeed
 					? credentialNeedApprovalHref({
-							orgSlug: input.orgSlug,
 							...input.forNeed,
 							credentialId: saved.id,
 						})
@@ -351,7 +359,14 @@ export function ConnectCredentialRoute(handle: Handle) {
 							)}
 						</span>
 					</div>
-					{existing ? (
+					{kindConflict ? (
+						<p
+							mix={css(errorCss)}
+							data-testid="connect-credential-kind-conflict"
+						>
+							{kindConflict}
+						</p>
+					) : existing ? (
 						<label
 							mix={css({
 								display: 'flex',
@@ -363,9 +378,16 @@ export function ConnectCredentialRoute(handle: Handle) {
 								type="checkbox"
 								checked={state.replaceExisting}
 								data-testid="connect-credential-replace"
-								mix={on('change', (event) =>
-									update({ replaceExisting: event.currentTarget.checked }),
-								)}
+								mix={on('change', (event) => {
+									const replaceExisting = event.currentTarget.checked
+									update({
+										replaceExisting,
+										provider:
+											replaceExisting && !state.provider.trim()
+												? (existing.provider ?? '')
+												: state.provider,
+									})
+								})}
 							/>
 							<span>
 								{isKey ? (
@@ -537,7 +559,9 @@ export function ConnectCredentialRoute(handle: Handle) {
 					) : null}
 					<button
 						type="submit"
-						disabled={saving || input.linkProblem !== null}
+						disabled={
+							saving || input.linkProblem !== null || kindConflict !== null
+						}
 						data-testid="connect-credential-save"
 						mix={css(primaryButtonCss)}
 					>
@@ -561,6 +585,9 @@ export function ConnectCredentialRoute(handle: Handle) {
 		const search = new URL(href, 'http://localhost').searchParams
 		const query = parseCredentialCreateQuery(search)
 		const orgSlug = data?.orgSlug ?? ''
+		const pathOrgSlug = orgSlugFromPathname(
+			new URL(href, 'http://localhost').pathname,
+		)
 		const selected = query.kind
 		const kinds = query.kindLocked && selected ? [selected] : credentialKinds
 		const matches = data ? findMatchingCredentials(data.credentials, query) : []
@@ -641,8 +668,9 @@ export function ConnectCredentialRoute(handle: Handle) {
 										packages,
 										linkProblem,
 										forNeed:
-											query.packageKodyId && query.needKey
+											pathOrgSlug && query.packageKodyId && query.needKey
 												? {
+														orgSlug: pathOrgSlug,
 														packageKodyId: query.packageKodyId,
 														needKey: query.needKey,
 													}

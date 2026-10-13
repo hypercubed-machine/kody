@@ -101,8 +101,8 @@ export function approvalAfterLabel(change: CredentialApprovalChangeView) {
 
 export function approvalChangeIsNoop(change: CredentialApprovalChangeView) {
 	if (change.before === null) return false
-	const before = change.before.map((ref) => ref.id).sort()
-	const after = change.after.map((ref) => ref.id).sort()
+	const before = change.before.map((ref) => ref.id)
+	const after = change.after.map((ref) => ref.id)
 	return (
 		before.length === after.length &&
 		before.every((id, index) => id === after[index])

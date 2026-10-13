@@ -109,7 +109,9 @@ export function PackageCredentialsRoute(handle: Handle) {
 	const editor = createPackageMappingEditor(handle, {
 		readPage: () => page,
 		onSaved(view) {
-			if (baseView) saved = { base: baseView, view }
+			if (baseView && baseView.package.id === view.package.id) {
+				saved = { base: baseView, view }
+			}
 		},
 	})
 

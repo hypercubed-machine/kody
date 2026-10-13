@@ -11,6 +11,7 @@ import {
 	credentialCreateHandoffHref,
 	credentialCreateMode,
 	credentialNeedApprovalHref,
+	existingKindConflict,
 	findExistingOrgKey,
 	expiresAtDateValue,
 	expiresAtHasTime,
@@ -168,6 +169,30 @@ test('replacing an existing Key keeps its hosts and package locks', () => {
 			'gh',
 		),
 	).toBeNull()
+	// An emptied provider clears the replaced Key's; no Key to replace sends none.
+	const withProvider = { ...existing, provider: 'openai' }
+	expect(
+		buildKeySaveBody({ kind: 'secret', form, existing: withProvider }),
+	).toMatchObject({ ok: true, body: { provider: '' } })
+	expect(
+		buildKeySaveBody({
+			kind: 'secret',
+			form: { ...form, replaceExisting: false },
+			existing: null,
+		}),
+	).toMatchObject({ ok: true, body: { provider: null } })
+})
+
+test('a name another kind holds is not offered for replacement', () => {
+	const signing = credential({ id: 's1', name: 'HOOK', kind: 'signing' })
+	const oauth = credential({ id: 'o1', name: 'github', kind: 'oauth' })
+	expect(findExistingOrgKey([oauth], 'github')).toBeNull()
+	expect(findExistingOrgKey([signing], 'HOOK')).toBe(signing)
+	expect(existingKindConflict(signing, 'secret')).toContain(
+		'credential named HOOK already exists',
+	)
+	expect(existingKindConflict(signing, 'signing')).toBeNull()
+	expect(existingKindConflict(null, 'secret')).toBeNull()
 })
 
 test('package Keys, expiry, and package locks come from the link and save like the legacy intake', () => {
@@ -420,4 +445,24 @@ test('a saved credential for a package need links to approve it as your default'
 	const url = new URL(href, 'https://kody.codes')
 	expect(url.pathname).toBe('/@acme/pr-digest/approve-credentials')
 	expect([...url.searchParams]).toEqual([['mine[github]', 'id:cred 1']])
+})
+
+test('the agent prompt leaves out a login link’s exchange', () => {
+	const exchange = encodeURIComponent(
+		JSON.stringify({
+			url: 'https://auth.example.com/token',
+			body: { client_secret: 'fixed-secret', username: '{username}' },
+		}),
+	)
+	const prompt = credentialCreateAgentPrompt({
+		kind: 'login',
+		query: query('kind=login&name=SVC_LOGIN'),
+		pageUrl: `https://kody.codes/@acme/-/credentials/new?kind=login&name=SVC_LOGIN&loginExchange=${exchange}`,
+		error: 'Fill every login field.',
+	})
+	expect(prompt).not.toContain('fixed-secret')
+	expect(prompt).toContain(
+		'https://kody.codes/@acme/-/credentials/new?kind=login&name=SVC_LOGIN',
+	)
+	expect(prompt).toContain('left out the link’s loginExchange')
 })

@@ -12,10 +12,12 @@ import {
 	draftToChange,
 	mappingEditorKey,
 	mappingOptions,
+	type MappingDraft,
 	mappingSaveAgentPrompt,
 	postPackageCredentialChanges,
 	toggleDraftPick,
 	triggerMappingRows,
+	triggerDraftProblem,
 	triggerWillEnable,
 } from './package-credentials-editing.ts'
 
@@ -179,12 +181,20 @@ test('editor keys tell targets and needs apart', () => {
 
 test('only the enabler edits a trigger, and an off trigger turns on when saved', () => {
 	expect(canEditTrigger(trigger())).toBe(true)
-	expect(triggerWillEnable(trigger())).toBe(true)
+	const pick: MappingDraft = { mode: 'pick', ids: ['cred-1'] }
+	const inherit: MappingDraft = { mode: 'inherit' }
+	expect(triggerWillEnable(trigger(), pick)).toBe(true)
+	expect(triggerWillEnable(trigger(), { mode: 'none' })).toBe(true)
+	expect(triggerWillEnable(trigger(), inherit)).toBe(false)
+	expect(triggerDraftProblem(trigger(), inherit)).toContain('stay off')
+	expect(triggerDraftProblem(trigger(), pick)).toBeNull()
+	expect(triggerDraftProblem(null, inherit)).toBeNull()
 	const mine = trigger({
 		enablement: { id: 'en', state: 'on', enabledByYou: true },
 	})
 	expect(canEditTrigger(mine)).toBe(true)
-	expect(triggerWillEnable(mine)).toBe(false)
+	expect(triggerWillEnable(mine, pick)).toBe(false)
+	expect(triggerDraftProblem(mine, inherit)).toBeNull()
 	expect(
 		canEditTrigger(
 			trigger({
