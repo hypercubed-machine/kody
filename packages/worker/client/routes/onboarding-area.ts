@@ -5,7 +5,7 @@ export {
 } from './connect-secrets.tsx'
 export {
 	ConnectCredentialRoute,
-	connectCredentialRouteLoader,
+	connectCredentialRedirectLoader,
 } from './connect-credential.tsx'
 export {
 	ConnectSecretSetRoute,
