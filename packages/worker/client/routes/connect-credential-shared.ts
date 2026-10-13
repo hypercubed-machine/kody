@@ -327,6 +327,15 @@ export function keyLinkProblem(input: {
 	if (readLinkExpiresAt(input.query.expiresAt) === 'invalid') {
 		return 'This link has an invalid expiresAt value. Use a UTC timestamp or YYYY-MM-DD.'
 	}
+	const packageScoped =
+		input.query.packageScopedTo !== null || input.query.packageScopeMissingId
+	if (
+		packageScoped &&
+		input.query.kind !== null &&
+		input.query.kind !== 'secret'
+	) {
+		return 'Only a Key can belong to one package. Ask for a link without packageId; you can still lock this credential to packages.'
+	}
 	if (input.query.packageScopeMissingId) {
 		return 'This link asks for a package key but names no package (packageId).'
 	}
@@ -338,16 +347,31 @@ export function keyLinkProblem(input: {
 }
 
 /** Why the form cannot save yet, before posting. */
-export function keyFormProblem(state: KeyFormState): string | null {
-	if (state.packageScope === 'package' && !state.packageId) {
+export function keyFormProblem(
+	state: KeyFormState,
+	kind: CredentialKind | null,
+): string | null {
+	if (
+		kind === 'secret' &&
+		state.packageScope === 'package' &&
+		!state.packageId
+	) {
 		return 'Choose the package this key belongs to.'
 	}
 	return null
 }
 
-/** The package a package Key belongs to, or null for an org Key. */
-export function keyFormPackageId(state: KeyFormState) {
-	return state.packageScope === 'package' ? state.packageId || null : null
+/**
+ * The package a package Key belongs to, or null for an org credential. Only a
+ * Key can be package-scoped; the website save refuses it for other kinds.
+ */
+export function keyFormPackageId(
+	state: KeyFormState,
+	kind: CredentialKind | null,
+) {
+	return kind === 'secret' && state.packageScope === 'package'
+		? state.packageId || null
+		: null
 }
 
 /**
@@ -365,7 +389,7 @@ export function buildKeySaveBody(input: {
 	const name = form.name.trim()
 	const replacing = form.replaceExisting && input.existing !== null
 	const hosts = parseHostsInput(form.hosts)
-	const packageId = keyFormPackageId(form)
+	const packageId = keyFormPackageId(form, input.kind)
 	const scope = packageId ? 'package' : 'user'
 	const allowedPackages = packageId
 		? []

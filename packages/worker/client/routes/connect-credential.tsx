@@ -191,7 +191,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 		event.preventDefault()
 		if (saving || !form) return
 		const current = form
-		const problem = keyFormProblem(current)
+		const problem = keyFormProblem(current, kind)
 		if (problem) {
 			message = problem
 			handle.update()
@@ -200,7 +200,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 		const existing = findExistingOrgKey(
 			data?.credentials ?? [],
 			current.name,
-			keyFormPackageId(current),
+			keyFormPackageId(current, kind),
 		)
 		if (existing && !current.replaceExisting) {
 			message = `A credential named ${current.name.trim()} already exists. Choose “Replace it” or pick another name.`
@@ -237,7 +237,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 				throw new Error(payload?.error || 'Unable to save this credential.')
 			}
 			savedName = current.name.trim()
-			savedPackageId = keyFormPackageId(current)
+			savedPackageId = keyFormPackageId(current, kind)
 			form = { ...current, value: '', loginFields: {} }
 			await refreshCredentials()
 		} catch (error) {
@@ -475,6 +475,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 					{renderPackageAccess({
 						state,
 						packages: input.packages,
+						packageKeys: isKey,
 						update,
 					})}
 					<div mix={css(fieldCss)}>
@@ -567,7 +568,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 		const existing = findExistingOrgKey(
 			data?.credentials ?? [],
 			state.name,
-			keyFormPackageId(state),
+			keyFormPackageId(state, selected),
 		)
 		const linkProblem = data ? keyLinkProblem({ query, packages }) : null
 		const scopedPackage =
