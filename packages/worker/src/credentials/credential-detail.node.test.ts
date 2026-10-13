@@ -179,6 +179,19 @@ test('usage reports how each package need relates to the credential', async () =
 	expect(
 		(await detail(item({ id: 'openai-1', name: 'OPENAI' }))).usageUnreadable,
 	).toBe(1)
+	// A locked credential only shows packages its locks allow.
+	expect(
+		(
+			await detail(
+				item({
+					id: 'openai-1',
+					name: 'OPENAI',
+					provider: 'openai',
+					lockedToPackageIds: ['digest'],
+				}),
+			)
+		).usage.map((use) => use.kodyId),
+	).toEqual(['digest'])
 	// A package key belongs to its package; it fills no declared need.
 	expect(
 		await detail(item({ id: 'openai-1', name: 'OPENAI', packageId: 'triage' })),
