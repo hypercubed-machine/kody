@@ -28,6 +28,7 @@ import { type CredentialMappingChange } from '#universal/credential-contracts.ts
 import * as needsClosure from './credential-needs-closure.ts'
 import { type CredentialNeed } from './credential-needs.ts'
 import {
+	credentialMappingUpdateAuditAction,
 	resolveMappingChanges,
 	writeMappingChanges,
 } from './package-credential-mapping-changes.ts'
@@ -227,6 +228,34 @@ async function setup() {
 			.prepare(`SELECT COUNT(*) AS n FROM enablements WHERE package_id = ?`)
 			.bind(packageId)
 			.first<{ n: number }>())!.n
+	const mappingAudits = async () => {
+		const rows = await env.AUDIT_DB.prepare(
+			`SELECT actor_user_id, actor_username, credential_kind, credential_id,
+				resource_type, resource_id, details_json
+			 FROM org_audit_events
+			 WHERE action = ? AND org_id = ?
+			 ORDER BY rowid`,
+		)
+			.bind(credentialMappingUpdateAuditAction, acmeId)
+			.all<{
+				actor_user_id: string | null
+				actor_username: string | null
+				credential_kind: string | null
+				credential_id: string | null
+				resource_type: string | null
+				resource_id: string | null
+				details_json: string | null
+			}>()
+		return (rows.results ?? []).map((row) => ({
+			actorUserId: row.actor_user_id,
+			actorUsername: row.actor_username,
+			credentialKind: row.credential_kind,
+			credentialId: row.credential_id,
+			resourceType: row.resource_type,
+			resourceId: row.resource_id,
+			details: row.details_json ? JSON.parse(row.details_json) : null,
+		}))
+	}
 	return {
 		db,
 		env,
@@ -238,6 +267,7 @@ async function setup() {
 		scopeFor,
 		apply,
 		enablementCount,
+		mappingAudits,
 	}
 }
 
@@ -349,6 +379,52 @@ test('one write sets defaults and a trigger mapping, turning the trigger on', as
 	})
 	expect(view.incomplete).toEqual([])
 
+	const afterWrite = await t.mappingAudits()
+	expect(afterWrite).toHaveLength(3)
+	expect(afterWrite.map((row) => row.details)).toEqual([
+		{
+			packageId: t.savedPackage.id,
+			kodyId: 'digest',
+			needKey: 'mail',
+			target: orgDefault,
+			trigger: null,
+			beforeCredentialIds: null,
+			afterCredentialIds: [prod],
+			willEnable: false,
+		},
+		{
+			packageId: t.savedPackage.id,
+			kodyId: 'digest',
+			needKey: 'chat',
+			target: mine,
+			trigger: null,
+			beforeCredentialIds: null,
+			afterCredentialIds: [],
+			willEnable: false,
+		},
+		{
+			packageId: t.savedPackage.id,
+			kodyId: 'digest',
+			needKey: 'mail',
+			target: daily,
+			trigger: daily.trigger,
+			beforeCredentialIds: null,
+			afterCredentialIds: [test_],
+			willEnable: true,
+		},
+	])
+	for (const row of afterWrite) {
+		expect(row).toMatchObject({
+			actorUserId: t.people.bea.personId,
+			actorUsername: 'bea',
+			credentialKind: 'session',
+			resourceType: 'package',
+			resourceId: t.savedPackage.id,
+		})
+		expect(row.details).not.toHaveProperty('value')
+		expect(row.details).not.toHaveProperty('credentials')
+	}
+
 	// A second write reuses the enablement and clearing restores inheritance.
 	await t.apply('bea', 'owner', [
 		{ target: daily, needKey: 'mail', credentials: null },
@@ -361,6 +437,31 @@ test('one write sets defaults and a trigger mapping, turning the trigger on', as
 		override: null,
 		effective: { source: 'org', status: 'ready', credentials: [{ id: prod }] },
 	})
+	const afterClear = await t.mappingAudits()
+	expect(afterClear).toHaveLength(4)
+	expect(afterClear[3]!.details).toEqual({
+		packageId: t.savedPackage.id,
+		kodyId: 'digest',
+		needKey: 'mail',
+		target: daily,
+		trigger: daily.trigger,
+		beforeCredentialIds: [test_],
+		afterCredentialIds: null,
+		willEnable: false,
+	})
+})
+
+test('refused mapping changes write no credential.mapping.update audit', async () => {
+	const t = await setup()
+	await t.storeKey('resend-prod', 'resend')
+	await t.apply('ann', 'member', [
+		{
+			target: orgDefault,
+			needKey: 'mail',
+			credentials: [{ name: 'resend-prod' }],
+		},
+	])
+	expect(await t.mappingAudits()).toEqual([])
 })
 
 test('changes that cannot apply carry a coded error and nothing is written', async () => {
