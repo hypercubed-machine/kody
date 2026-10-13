@@ -309,6 +309,7 @@ import {
 	createLegacyOrgPackagesRedirectHandler,
 } from '#app/handlers/legacy-org-packages-redirect.ts'
 import {
+	createOrgCredentialNewHandler,
 	createOrgRepositoriesApiHandler,
 	createOrgSectionHandler,
 } from '#app/handlers/org-section.ts'
@@ -656,6 +657,7 @@ export function createAppRouter(env: Env) {
 			orgBillingPortal: createOrgBillingPortalHandler(env),
 			orgConnections: createOrgSectionHandler(env, 'connections'),
 			orgCredentials: createOrgSectionHandler(env, 'credentials'),
+			orgCredentialNew: createOrgCredentialNewHandler(env),
 			orgEmail: createOrgSectionHandler(env, 'email'),
 			orgIntegrations: withCredentialIndexRedirect(
 				createOrgSectionHandler(env, 'integrations'),
@@ -714,7 +716,9 @@ export function createAppRouter(env: Env) {
 			stripeWebhook: createStripeWebhookHandler(env),
 			connectOauth: createConnectOauthHandler(env),
 			connectSecrets: createConnectSecretsHandler(env),
-			connectSecretSet: createConnectSecretSetHandler(env),
+			connectSecretSet: withCredentialIndexRedirect(
+				createConnectSecretSetHandler(env),
+			),
 			connectCredential: createConnectCredentialHandler(env),
 			connectWebhookApply: createConnectWebhookApplyHandler(env),
 			auth: createAuthHandler(env),

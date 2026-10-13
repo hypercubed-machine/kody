@@ -29,7 +29,7 @@ import {
 import {
 	type CredentialListFilters,
 	type CredentialListItem,
-	credentialCreatePath,
+	orgCredentialCreatePath,
 	credentialKinds,
 	isCredentialKind,
 } from '#universal/credential-contracts.ts'
@@ -41,7 +41,6 @@ import {
 	filterCredentialList,
 } from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
-import { routes } from '#universal/routes.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
@@ -289,36 +288,19 @@ export function AccountCredentialsRoute(handle: Handle) {
 					description="Keys, OAuth connections, MCP servers, and every other way Kody reaches a service for you. Kody places each value at the network boundary; values never appear here."
 					currentHref={currentHref}
 					actions={
-						// The one-pager saves into the signup org, so team orgs keep
-						// their org-pinned creation pages.
-						orgSlug && !teamOrg ? (
+						orgSlug ? (
 							<div mix={headerActionsCss}>
 								<a
-									href={credentialCreatePath}
+									href={orgCredentialCreatePath(orgSlug)}
 									mix={css(getPillButtonCss({ size: 'sm' }))}
 								>
 									Add credential
 								</a>
-							</div>
-						) : orgSlug ? (
-							<div mix={headerActionsCss}>
 								<a
-									href={orgResourcePath(orgSlug, 'secrets', 'new')}
-									mix={css(getPillButtonCss({ size: 'sm' }))}
-								>
-									New key
-								</a>
-								<a
-									href={routes.connectOauth.href()}
+									href={orgResourcePath(orgSlug, 'secret-providers')}
 									mix={css(getGhostButtonCss({ size: 'sm' }))}
 								>
-									Connect OAuth
-								</a>
-								<a
-									href={orgResourcePath(orgSlug, 'mcp-servers', 'new')}
-									mix={css(getGhostButtonCss({ size: 'sm' }))}
-								>
-									Add MCP server
+									Secret providers
 								</a>
 							</div>
 						) : null

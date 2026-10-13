@@ -28,7 +28,7 @@ test('old org index pages go to the Credentials list filtered by kind', () => {
 	)
 })
 
-test('deeper flows, /connect/oauth, and other sections keep serving', () => {
+test('deeper flows, /connect/oauth, Secret providers, and other sections keep serving', () => {
 	for (const path of [
 		'/@acme/-/secret-providers',
 		'/@acme/-/secret-providers?q=vault',
@@ -49,21 +49,38 @@ test('deeper flows, /connect/oauth, and other sections keep serving', () => {
 	}
 })
 
-test('/connect/secret-set becomes a secret creation link, package renamed', () => {
-	const location = redirect(
-		'/connect/secret-set?name=stripe&allowedHosts=api.stripe.com&package=pkg-1&allowedPackages=pkg-2&scope=user&kind=oauth',
+test('/connect/secret-set opens the Key form with the same prefill', () => {
+	const open = (search: string) => {
+		const location = redirect(`/connect/secret-set${search}`)
+		const url = new URL(location!, 'https://kody.test')
+		expect(url.pathname).toBe('/connect/credential')
+		return { url, query: parseCredentialCreateQuery(url.searchParams) }
+	}
+	const locked = open(
+		'?name=stripe&allowed-host=api.stripe.com&allowedHosts=uploads.stripe.com&package=pkg-1&package_id=pkg-3&allowedPackages=pkg-2&scope=user&kind=oauth&description=Billing&provider=stripe&expiresAt=2026-12-31',
 	)
-	const url = new URL(location!, 'https://kody.test')
-	expect(url.pathname).toBe('/connect/credential')
-	expect(url.searchParams.getAll('kind')).toEqual(['secret'])
-	expect(url.searchParams.getAll('allowedPackages')).toEqual(['pkg-1', 'pkg-2'])
-	expect(url.searchParams.has('package')).toBe(false)
-	expect(url.searchParams.get('scope')).toBe('user')
-	expect(parseCredentialCreateQuery(url.searchParams)).toMatchObject({
+	expect(locked.url.searchParams.getAll('kind')).toEqual(['secret'])
+	expect(locked.url.searchParams.has('package')).toBe(false)
+	expect(locked.query).toMatchObject({
 		kind: 'secret',
 		name: 'stripe',
-		allowedHosts: ['api.stripe.com'],
+		description: 'Billing',
+		provider: 'stripe',
+		expiresAt: '2026-12-31',
+		allowedHosts: ['api.stripe.com', 'uploads.stripe.com'],
+		allowedPackages: ['pkg-1', 'pkg-3', 'pkg-2'],
+		packageScopedTo: null,
 		packageKodyId: null,
+	})
+
+	expect(
+		open('?name=t&scope=package&packageId=pkg-1&package=pkg-2').query,
+	).toMatchObject({ packageScopedTo: 'pkg-1', allowedPackages: [] })
+	expect(open('?name=t&packageId=pkg-1').query).toMatchObject({
+		packageScopedTo: 'pkg-1',
+	})
+	expect(open('?name=t&scope=package').query).toMatchObject({
+		packageScopeMissingId: true,
 	})
 	expect(redirect('/connect/secret-set')).toBe(
 		'/connect/credential?kind=secret',
