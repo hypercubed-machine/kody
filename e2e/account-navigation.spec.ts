@@ -435,22 +435,26 @@ test('account live search keeps the same focused input while the list filters', 
 	})
 	expect(betaSecret.ok()).toBe(true)
 
-	await page.goto(`/@${user.username}/-/secrets`)
-	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/secrets$`))
+	await page.goto(`/@${user.username}/-/credentials`)
+	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/credentials$`))
 	await waitForClientHydration(page)
 	await expect(
-		page.getByRole('heading', { level: 1, name: 'Secrets' }),
+		page.getByRole('heading', { level: 1, name: 'Credentials' }),
 	).toBeVisible()
 	await expect(page.getByText(`alphaSecret${runId}`)).toBeVisible()
 	await expect(page.getByText(`betaSecret${runId}`)).toBeVisible()
 
-	const secretsSearch = page.getByRole('searchbox', { name: 'Search secrets' })
-	await secretsSearch.click()
-	await markSearchNode(secretsSearch)
-	await secretsSearch.pressSequentially(`alphaSecret${runId}`, { delay: 20 })
-	await expect(secretsSearch).toBeFocused()
-	await expect(secretsSearch).toHaveAttribute('data-kody-search-mount', '1')
-	await expect(secretsSearch).toHaveValue(`alphaSecret${runId}`)
+	const credentialsSearch = page.getByRole('searchbox', {
+		name: 'Search credentials',
+	})
+	await credentialsSearch.click()
+	await markSearchNode(credentialsSearch)
+	await credentialsSearch.pressSequentially(`alphaSecret${runId}`, {
+		delay: 20,
+	})
+	await expect(credentialsSearch).toBeFocused()
+	await expect(credentialsSearch).toHaveAttribute('data-kody-search-mount', '1')
+	await expect(credentialsSearch).toHaveValue(`alphaSecret${runId}`)
 	await expect(page.getByText(`alphaSecret${runId}`)).toBeVisible()
 	await expect(page.getByText(`betaSecret${runId}`)).toHaveCount(0)
 
