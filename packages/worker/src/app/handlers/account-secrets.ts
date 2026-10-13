@@ -1391,7 +1391,11 @@ async function handleSaveAction(input: {
 					kind: optIn.kind,
 					hosts: optIn.hosts,
 					login_exchange: optIn.loginExchange,
-					...(provider?.success ? { provider: provider.data } : {}),
+					...(provider?.success
+						? { provider: provider.data }
+						: clearProvider
+							? { provider: null }
+							: {}),
 				},
 				authorityPackageId: null,
 			})

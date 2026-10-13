@@ -1331,6 +1331,48 @@ test('account secrets save stores url, login, and signing credentials with their
 	})
 })
 
+test('account secrets save clears an opt-in credential provider sent empty', async () => {
+	mockSecretsListing([makeSecret('webhook')])
+	mockModule.readStoredCredentialPlacement.mockResolvedValue({
+		id: 'cred-webhook',
+		kind: 'url',
+		allowedHosts: ['hooks.example.com'],
+		loginExchange: null,
+		provider: 'slack',
+		inject: { kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
+	})
+	const save = (provider?: string) =>
+		createHandler()(
+			postRequest({
+				action: 'save',
+				currentId: 'user::::webhook',
+				name: 'webhook',
+				scope: 'user',
+				kind: 'url',
+				hosts: ['hooks.example.com'],
+				value: 'https://hooks.example.com/new',
+				allowedHosts: [],
+				allowedPackages: [],
+				...(provider === undefined ? {} : { provider }),
+			}),
+		)
+	try {
+		expect((await save('')).status).toBe(200)
+		expect(mockModule.saveSecret.mock.lastCall?.[0].credential).toMatchObject({
+			provider: null,
+		})
+		mockSecretsListing([makeSecret('webhook')])
+		expect((await save()).status).toBe(200)
+		expect(mockModule.saveSecret.mock.lastCall?.[0].credential).toMatchObject({
+			provider: 'slack',
+		})
+	} finally {
+		mockModule.readStoredCredentialPlacement.mockImplementation(
+			async () => null,
+		)
+	}
+})
+
 test('account secrets save refuses opt-in kinds without a typed value, hosts, or a fitting value', async () => {
 	mockSecretsListing([])
 	const call = createHandler()
