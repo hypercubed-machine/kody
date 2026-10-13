@@ -2,7 +2,6 @@ import { type RemixNode, css } from 'remix/component'
 import {
 	canEditTrigger,
 	triggerMappingRows,
-	triggerWillEnable,
 } from '#client/routes/package-credentials-editing.ts'
 import {
 	type CredentialMappingTarget,
@@ -469,19 +468,22 @@ function renderTriggerMappings(
 	context: PackageTabContext,
 	trigger: PackageTriggerView,
 ) {
-	if (trigger.enablement && !trigger.enablement.enabledByYou) {
+	const enablement = trigger.enablement
+	if (enablement && !enablement.enabledByYou && enablement.state !== 'off') {
 		return (
 			<p mix={css(mutedCss)}>
-				Someone else turned this trigger on, so its credential mappings are
-				theirs.
+				{enablement.state === 'paused'
+					? 'Someone else turned this trigger on (it is paused), so its credential mappings are theirs.'
+					: 'Someone else turned this trigger on, so its credential mappings are theirs.'}
 			</p>
 		)
 	}
 	if (trigger.trigger.kind === 'webhook' && trigger.instanceId === null) {
 		return (
 			<p mix={css(mutedCss)}>
-				This webhook has no URL yet. Once someone mints it from Settings, its
-				runs use their default mappings.
+				{context.view.package.canManage
+					? 'This webhook has no URL yet. Once someone mints it from Settings, its runs use their default mappings.'
+					: 'This webhook has no URL yet. Once someone who manages this package mints it, its runs use their default mappings.'}
 			</p>
 		)
 	}
@@ -503,12 +505,13 @@ function renderTriggerMappings(
 	}
 	return (
 		<div mix={css({ display: 'grid', gap: spacing.sm })}>
-			{editable && triggerWillEnable(trigger) ? (
+			{editable && trigger.canEdit && trigger.enablement === null ? (
 				<p
 					data-testid="package-trigger-will-enable"
 					mix={css({ margin: 0, color: colors.warningText })}
 				>
-					This trigger is off. Saving a mapping here turns it on for you.
+					This trigger is off. Saving a credential choice here turns it on for
+					you.
 				</p>
 			) : null}
 			<div mix={css({ overflowX: 'auto' })}>

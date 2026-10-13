@@ -709,7 +709,7 @@ export function createCommunityPackageCredentialsHandler(
 			if (page.kind === 'unauthorized') {
 				return renderPackageUnauthorizedPage({ request, env })
 			}
-			if (!page.viewerIsOwner || !page.ownerPackage) {
+			if (!page.viewerIsOwner || !page.hasPackage || !page.ownerPackage) {
 				return renderPackageNotFoundPage({ request, env })
 			}
 			return renderAppPage({

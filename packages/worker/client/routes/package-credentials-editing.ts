@@ -114,9 +114,28 @@ export function draftToChange(input: {
 	}
 }
 
-/** Writing a trigger mapping turns the trigger on for a writer who has not enabled it. */
-export function triggerWillEnable(trigger: PackageTriggerView) {
-	return trigger.canEdit && trigger.enablement === null
+/**
+ * Writing a credential choice turns the trigger on for a writer who has not
+ * enabled it. Inherit writes nothing, so an off trigger stays off.
+ */
+export function triggerWillEnable(
+	trigger: PackageTriggerView,
+	draft: MappingDraft,
+) {
+	return (
+		trigger.canEdit && trigger.enablement === null && draft.mode !== 'inherit'
+	)
+}
+
+/** Why saving this draft would change nothing, or null when it writes. */
+export function triggerDraftProblem(
+	trigger: PackageTriggerView | null,
+	draft: MappingDraft,
+) {
+	if (!trigger || trigger.enablement !== null || draft.mode !== 'inherit') {
+		return null
+	}
+	return 'This trigger is off, and inheriting writes nothing, so it would stay off. Pick a credential (or none on purpose) to turn it on with this mapping.'
 }
 
 export function canEditTrigger(trigger: PackageTriggerView) {

@@ -22,8 +22,14 @@ export const maxUsagePackages = 40
 
 const placeholderNamePattern = /^[a-zA-Z0-9._-]+$/
 
+/**
+ * The placeholder code writes for `credential`, or null when none reaches it.
+ * Placeholders resolve in the bound org, so a personal credential granted to
+ * a team org has none there; packages reach it through `credential()` picks.
+ */
 export function credentialPlaceholder(credential: CredentialListItem) {
 	if (!placeholderNamePattern.test(credential.name)) return null
+	if (credential.scope === 'personal') return null
 	switch (credential.kind) {
 		case 'secret':
 			return credential.packageId
@@ -82,13 +88,18 @@ async function listUsage(input: {
 						tags: { scope: 'credentials.detail.usage' },
 						extra: { packageId: pkg.id },
 					})
-					return []
+					return null
 				}),
 			})),
 		),
 	])
 	const usage: AccountCredentialDetail['usage'] = []
+	let unreadable = 0
 	for (const { pkg, needs } of closures) {
+		if (needs === null) {
+			unreadable += 1
+			continue
+		}
 		for (const need of needs) {
 			const resolution = resolveNeedCandidates(need, usable)
 			const fit: CredentialNeedFit | null =
@@ -111,11 +122,14 @@ async function listUsage(input: {
 			}
 		}
 	}
-	return usage.sort(
-		(left, right) =>
-			left.kodyId.localeCompare(right.kodyId) ||
-			left.needKey.localeCompare(right.needKey),
-	)
+	return {
+		usage: usage.sort(
+			(left, right) =>
+				left.kodyId.localeCompare(right.kodyId) ||
+				left.needKey.localeCompare(right.needKey),
+		),
+		unreadable,
+	}
 }
 
 export async function loadCredentialDetail(input: {
@@ -128,24 +142,31 @@ export async function loadCredentialDetail(input: {
 	/** The org's packages, most recently updated first. */
 	packages: ReadonlyArray<SavedPackageRecord>
 }): Promise<AccountCredentialDetail> {
-	const checked = input.packages.slice(0, maxUsagePackages)
+	// A package key fills its own package's placeholders, never declared needs.
+	const checked = input.credential.packageId
+		? []
+		: input.packages.slice(0, maxUsagePackages)
 	const [grants, usage] = await Promise.all([
 		input.ownedByViewer
 			? listGrants(input.env.APP_DB, input.credential.id)
 			: [],
-		listUsage({
-			env: input.env,
-			request: input.request,
-			orgId: input.orgId,
-			credentialId: input.credential.id,
-			packages: checked,
-		}),
+		checked.length > 0
+			? listUsage({
+					env: input.env,
+					request: input.request,
+					orgId: input.orgId,
+					credentialId: input.credential.id,
+					packages: checked,
+				})
+			: { usage: [], unreadable: 0 },
 	])
 	return {
 		id: input.credential.id,
 		placeholder: credentialPlaceholder(input.credential),
 		grants,
-		usage,
-		usageTruncated: input.packages.length > checked.length,
+		usage: usage.usage,
+		usageTruncated:
+			!input.credential.packageId && input.packages.length > checked.length,
+		usageUnreadable: usage.unreadable,
 	}
 }
