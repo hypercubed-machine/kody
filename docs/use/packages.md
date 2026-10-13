@@ -187,6 +187,11 @@ into are described in
   provider, which resolve automatically once their provider is set
   (`credentialUpdate`). Only credentials you can Use are listed, and needs
   inherited from a dependency carry `from`.
+- To choose which credential a need uses, an agent calls
+  `credentialMappingPropose` with org defaults, your own defaults, or mappings
+  for your instance of a trigger. It writes nothing and returns an approval
+  link. The mappings apply when you open the link and click Approve, which
+  applies them all at once and turns on any trigger they map.
 - Slots take no `placement`. Publish rejects one with a message to remove it.
   Published versions that include it load with it ignored. The fetch gateway
   fills `{{secret:NAME}}` and `{{integration-token:NAME}}` anywhere in a request
@@ -226,9 +231,13 @@ await resend.fetch('/emails', { method: 'POST', body: JSON.stringify(email) })
 - `credential.named(name, { scope })` picks by exact name. It works only in ad
   hoc execute and in packages of your personal org that are not listed in
   Community.
-- A client works only in the run that opened it. Under `kody execute --local`, a
-  saved package that imports `credential` works the same; ad hoc local code
-  needs a CLI release that adds `credential` to its `kody:runtime`.
+- A client works only in the run that opened it. Under `kody execute --local`,
+  published `kody:@…` modules and ad hoc / unpublished `--code` / `--file`
+  modules both use `credential` / `credentials` from `kody:runtime` with the
+  same CapabilityProxy resolution and gateway placement as hosted (secret values
+  never enter local workerd). CLI releases before the
+  [local credential runtime contract](../contributing/contracts/cli-local-credential-runtime.md)
+  lack the host export and fail at import time — upgrade `@kodycodes/cli`.
 
 To list credential references that match the detect-only scan, run
 `repoRunChecks`. Its `credentials` result lists each file with the codemod 0010

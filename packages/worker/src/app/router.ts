@@ -143,6 +143,8 @@ import {
 	createAccountExperimentsApiHandler,
 	createAccountExperimentsHandler,
 } from '#app/handlers/account-experiments.ts'
+import { createPackageCredentialApprovalApiHandler } from '#app/handlers/package-credential-approval.ts'
+import { createPackageCredentialsApiHandler } from '#app/handlers/package-credentials.ts'
 import { createCommunityPackageWebhooksApiHandler } from '#app/handlers/package-webhooks.ts'
 import { createAccountResendVerificationHandler } from '#app/handlers/account-resend-verification.ts'
 import { createPendingVerificationHandler } from '#app/handlers/pending-verification.ts'
@@ -488,6 +490,13 @@ export function createAppRouter(env: Env) {
 				createCommunityPackageWebhooksApiHandler(env),
 			communityPackageWebhooksApiPost:
 				createCommunityPackageWebhooksApiHandler(env),
+			communityPackageCredentialsApi: createPackageCredentialsApiHandler(env),
+			communityPackageCredentialsApiPost:
+				createPackageCredentialsApiHandler(env),
+			communityPackageApproveCredentialsApi:
+				createPackageCredentialApprovalApiHandler(env),
+			communityPackageApproveCredentialsApiPost:
+				createPackageCredentialApprovalApiHandler(env),
 			accountPackageFiles: createAccountPackageFilesHandler(env),
 			accountPackageFilesApi: createAccountPackageFilesApiHandler(env),
 			accountPackagesApi: createAccountPackagesApiHandler(env),

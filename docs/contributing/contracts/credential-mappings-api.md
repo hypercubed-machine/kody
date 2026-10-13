@@ -184,8 +184,9 @@ GET /account/credentials.json?q=&kind=&scope=&packageScoped=&locked=
 ```
 
 Session-authenticated (website), for the current org binding. The MCP / Open API
-twin is the `credentialList` capability with the same filters as input and the
-same `credentials` array as output.
+twin is the `credentialList` capability (`GET /v1/credentials`, with `kinds` in
+place of `kind`) taking the same filters and returning the same `credentials`
+array.
 
 | Filter          | Values                                                                                |
 | --------------- | ------------------------------------------------------------------------------------- |
@@ -313,8 +314,22 @@ export type PackageCredentialsView = {
 `POST { changes: Array<CredentialMappingChange> }` applies edits made directly
 on the website (a person editing a tab) and returns the updated
 `PackageCredentialsView`. It uses the same validator and writer as Approve and
-is atomic: every change applies, or none does (`400 { ok: false, errors }`).
-This endpoint is session-only; MCP and API tokens cannot reach it.
+is atomic: every change applies, or none does. This endpoint is session-only;
+MCP and API tokens cannot reach it.
+
+- `:username` is the org slug. The viewer must belong to the org (or hold a
+  grant in it) and have `package:execute` on the package; otherwise `404`.
+- A malformed body (not 1–64 changes of the shape above) is
+  `400 { ok: false, error }`.
+- Changes that cannot apply are `400 PackageCredentialsWriteFailure`:
+  `{ ok: false, errors: Array<{ needKey, target, code, message, createUrl? }> }`
+  with the approval error codes. Nothing is written.
+- `409 { ok: false, error }` when a trigger was turned on by someone else
+  between reading and writing (webhooks).
+- A webhook another person enabled shows `enablement.enabledByYou: false`,
+  `canEdit: false`, and no `mappings` (its overrides are theirs).
+- `incomplete` lists the default per need, plus each trigger the viewer has
+  turned on (a trigger that is off never runs).
 
 Who can write:
 
@@ -361,7 +376,9 @@ Each mapping param is repeatable, one value per credential:
   `daily]backup` is `trigger[cron:daily%5Dbackup][github]` after query decoding.
   The codecs do this; hand-built links only need it for those three characters.
 
-At most 64 mapping params. Example:
+At most 64 mapping params (a param's repeated values count once). Param names
+that decode to the same target and need (`default[github]` and
+`default[git%68ub]`) are one param. Example:
 
 ```
 /@acme/pr-digest/approve-credentials?default[github]=org:acme-bot&trigger[cron:daily][slack]=team-slack&reason=Daily%20digest%20posts%20to%20Slack
@@ -425,13 +442,32 @@ export type CredentialApprovalView = {
 }
 ```
 
+```ts
+/** Approve refused; nothing was written. `view` is resolved fresh. */
+export type CredentialApprovalFailure = {
+	ok: false
+	error: string
+	view: CredentialApprovalView
+}
+
+export type CredentialApprovalSuccess = {
+	ok: true
+	view: CredentialApprovalView
+}
+```
+
 - `GET` resolves the proposal for the signed-in viewer and returns
-  `CredentialApprovalView`. It never writes.
-- `POST { action: 'approve', fingerprint }` re-resolves the same query. A
-  different fingerprint (a credential was renamed or replaced, or a mapping
-  changed since review) is `409 { ok: false, error, view }` with the fresh view.
-  Otherwise every change (and any trigger it enables) is written in one batch:
-  `{ ok: true, view }`.
+  `CredentialApprovalView`. It never writes. 401 without a session; 404 when the
+  org or package is not visible or the viewer lacks `package:execute`.
+- `POST { action: 'approve', fingerprint }` re-resolves the same query:
+  - `canApprove` is false now: `400 CredentialApprovalFailure`.
+  - A different fingerprint (a credential was replaced, or a mapping changed
+    since review): `409 CredentialApprovalFailure` with the fresh view. Show it
+    and let the person approve again.
+  - A webhook someone else enabled between review and write:
+    `409 CredentialApprovalFailure`.
+  - Otherwise every change (and any trigger it enables) is written in one batch:
+    `200 CredentialApprovalSuccess`, whose view shows the new `before`.
 - One Approve applies trigger mappings and default mappings together.
 
 ### `credentialMappingPropose` (MCP / Open API)
@@ -456,6 +492,9 @@ Input:
 Output: `{ approvalUrl, view: CredentialApprovalView, message }`. It validates
 as the caller would approve and returns the absolute approval URL to send to the
 person. It never writes. `view.canApprove: false` lists what to fix first.
+
+Open API: `POST /v1/credential-proposals`. Package code cannot call it, and a
+package the caller cannot run is a caller error ("Package not found").
 
 ## Runtime errors
 
@@ -507,10 +546,21 @@ Only index pages redirect. Deeper paths that are approval or OAuth flows
 (`/@:org/-/secrets/approve`, `/@:org/-/mcp-servers/:serverId/authorize`,
 `/account/mcp-servers/oauth/callback`) keep serving. `/connect/oauth` never
 redirects: it is the registered OAuth redirect URI for bring-your-own apps.
-`credentialRedirectFor(url)` returns the new URL or null so the router and tests
-share one table. Legacy `/connect/secret-set` links read `package` as an allowed
-package id, so the redirect renames it to `allowedPackages` (the creation link
-uses `forPackage` for the package a need belongs to).
+`credentialRedirectFor(url)` (`universal/credential-redirects.ts`) returns the
+new path and query or null so the router and tests share one table. Legacy
+`/connect/secret-set` links read `package` as an allowed package id, so the
+redirect renames it to `allowedPackages` (the creation link uses `forPackage`
+for the package a need belongs to).
+
+Wiring waits on the pages that replace the old ones:
+
+- The four org index routes switch on by wrapping their handlers with
+  `withCredentialIndexRedirect` (`app/handlers/credential-index-redirect.ts`) in
+  the PR that moves the add forms and row editors off those index pages. Until
+  then the Credentials page links to them, and a redirect would loop.
+- `/connect/secret-set` switches on when `/connect/credential` serves the
+  one-pager. Today `/connect/credential?kind=secret` redirects to
+  `/connect/secret-set`, so redirecting back would loop.
 
 ## Build order
 

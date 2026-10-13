@@ -18,10 +18,11 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
-import { getDiscoverablePlatformOauthApp } from '#worker/integrations/platform-apps.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { type PackageCredentialKind } from '#worker/package-registry/types.ts'
+import { enablementIdOf } from '#worker/request-context/request-context.ts'
 import { buildCredentialCreateUrl } from '#universal/credential-contracts.ts'
+import { buildNeedCreateUrl } from './need-create-url.ts'
 import {
 	CredentialClientHandleError,
 	signCredentialClientHandle,
@@ -30,8 +31,14 @@ import {
 import {
 	findCredentialById,
 	listUsableCredentials,
+	needCandidates,
 	type UsableCredential,
 } from './credential-candidates.ts'
+import {
+	type CredentialMappingRowTarget,
+	loadCredentialMappings,
+	resolveStoredMapping,
+} from './credential-mappings.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
 import {
 	CredentialLoginFailedError,
@@ -229,45 +236,6 @@ async function loadNeed(ctx: CredentialClientContext, key: string) {
 	}
 }
 
-const providerSlugPattern = /^[a-z0-9-]+$/
-
-/**
- * The creation link for an unbound need. A declared kind is locked; without
- * one the page suggests OAuth when a built-in app exists for the provider,
- * else a Key, and shows the kind chooser.
- */
-async function createUrlForNeed(
-	ctx: CredentialClientContext,
-	input: {
-		key: string
-		provider: string
-		need: Awaited<ReturnType<typeof loadNeed>>['need']
-		packageKodyId: string | null
-	},
-) {
-	const declaredKind: PackageCredentialKind | null = input.need?.kind ?? null
-	const providerSlug = providerSlugPattern.test(input.provider)
-		? input.provider
-		: null
-	const builtInOauth =
-		!declaredKind && providerSlug
-			? await getDiscoverablePlatformOauthApp({
-					db: ctx.env.APP_DB,
-					slug: providerSlug,
-				}).catch(() => null)
-			: null
-	return buildCredentialCreateUrl(ctx.callerContext.baseUrl, {
-		kind: declaredKind ?? (builtInOauth ? 'oauth' : 'secret'),
-		kindMode: declaredKind ? 'required' : 'hint',
-		name: input.key,
-		provider: providerSlug,
-		description: input.need?.description,
-		packageKodyId: input.packageKodyId,
-		needKey: input.need ? input.key : null,
-		extra: builtInOauth && providerSlug ? { platform: providerSlug } : {},
-	})
-}
-
 /**
  * `credential.named` works only in ad hoc code and in a package of the
  * actor's personal org that is not listed in Community.
@@ -354,6 +322,69 @@ async function pickOne(input: {
 	)
 }
 
+/**
+ * A package need's stored mapping (trigger override, then the actor's own
+ * default, then the org default), or null to auto-resolve. Interactive runs
+ * have no trigger override; a trigger run acts as its enabler.
+ */
+async function resolveMappedNeed(
+	ctx: CredentialClientContext,
+	input: {
+		request: RequestContext
+		key: string
+		kind: PackageCredentialKind | null
+		usable: Array<UsableCredential>
+		createUrl: () => Promise<string>
+	},
+): Promise<UsableCredential | null> {
+	if (!ctx.packageId) return null
+	const enablementId = enablementIdOf(input.request)
+	const rows = await loadCredentialMappings({
+		db: ctx.env.APP_DB,
+		orgId: input.request.org.id,
+		packageId: ctx.packageId,
+		personId: input.request.actor!.userId,
+		enablementIds: enablementId ? [enablementId] : [],
+		needKey: input.key,
+	})
+	const layer = (target: CredentialMappingRowTarget['target']) =>
+		rows.find((row) => row.target.target === target)?.credentialIds ?? null
+	const resolved = resolveStoredMapping({
+		trigger: layer('enablement'),
+		mine: layer('mine'),
+		org: layer('org'),
+		usable: input.usable,
+		kind: input.kind,
+	})
+	if (!resolved) return null
+	const where =
+		resolved.source === 'trigger'
+			? 'this trigger'
+			: resolved.source === 'mine'
+				? 'your default'
+				: 'the org default'
+	switch (resolved.status) {
+		case 'ready':
+			return resolved.credentials[0]!
+		case 'none':
+			throw refusal(
+				'credential_unbound',
+				`Need "${input.key}" is mapped to no credential on purpose (${where}). Change that mapping in the package's credential settings, or create a credential and map it.`,
+				{ createUrl: await input.createUrl() },
+			)
+		case 'unusable':
+			throw refusal(
+				'credential_not_found',
+				`The credential mapped to need "${input.key}" for ${where} is gone or you can no longer use it. Map another credential to it in the package's trigger settings.`,
+				{ createUrl: await input.createUrl() },
+			)
+		default: {
+			const exhaustive: never = resolved
+			throw new Error(`Unhandled mapping status: ${JSON.stringify(exhaustive)}`)
+		}
+	}
+}
+
 export async function openCredentialClient(
 	ctx: CredentialClientContext,
 	input: { key?: unknown; name?: unknown; scope?: unknown },
@@ -391,26 +422,39 @@ export async function openCredentialClient(
 		const { need, packageKodyId } = await loadNeed(ctx, key!)
 		const kind = need?.kind ?? null
 		const provider = need?.provider ?? key!
-		picked = await pickOne({
-			key,
-			candidates: usable.filter(
-				(credential) =>
-					credential.provider === provider &&
-					(kind === null || credential.kind === kind),
-			),
-			possibleMatches: kind
-				? usable.filter(
-						(credential) =>
-							credential.kind === kind && credential.provider === null,
-					)
-				: [],
-			describe: kind
-				? `need "${key}" (${kind} from provider "${provider}")`
-				: `provider "${provider}"`,
-			hint: secretSetHint(kind, provider),
-			createUrl: () =>
-				createUrlForNeed(ctx, { key: key!, provider, need, packageKodyId }),
+		const createUrl = () =>
+			buildNeedCreateUrl({
+				db: ctx.env.APP_DB,
+				baseUrl: ctx.callerContext.baseUrl,
+				key: key!,
+				provider,
+				need,
+				packageKodyId,
+			})
+		const mapped = await resolveMappedNeed(ctx, {
+			request,
+			key: key!,
+			kind,
+			usable,
+			createUrl,
 		})
+		picked =
+			mapped ??
+			(await pickOne({
+				key,
+				candidates: needCandidates(usable, { kind, provider }),
+				possibleMatches: kind
+					? usable.filter(
+							(credential) =>
+								credential.kind === kind && credential.provider === null,
+						)
+					: [],
+				describe: kind
+					? `need "${key}" (${kind} from provider "${provider}")`
+					: `provider "${provider}"`,
+				hint: secretSetHint(kind, provider),
+				createUrl,
+			}))
 	}
 	if (picked.kind === 'mcp' && picked.scope === 'personal') {
 		throw refusal(
