@@ -18,6 +18,7 @@ import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	createAuditTestDb,
 	createTestOrgAuditWriter,
@@ -47,6 +48,7 @@ import {
 	buildWriteCredentialMappingStatement,
 	type CredentialMappingRowTarget,
 	deleteCredentialMappingsForMember,
+	deleteCredentialMappingsForPackage,
 } from './credential-mappings.ts'
 import * as needsClosure from './credential-needs-closure.ts'
 import { type CredentialNeed } from './credential-needs.ts'
@@ -540,6 +542,51 @@ test('an unbound link selects a built-in OAuth app, and kinds with no form point
 	expect(urlNeed.message).toMatch(/Create one at https:\/\/\S+kind=url/)
 })
 
+test('a declared need with no kind opens any fetch-capable credential for the provider', async () => {
+	const t = await setup()
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/pr-summary',
+	})
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		{
+			key: 'github',
+			provider: 'github',
+			description: 'Read PRs to summarize them',
+			multiple: false,
+		},
+	])
+	await t.storeKey({
+		name: 'gh-pat',
+		provider: 'github',
+		hosts: ['api.github.com'],
+	})
+	const ctx = t.contextFor({
+		request: t.requestAs('bea', 'owner'),
+		packageId,
+	})
+	await expect(
+		openCredentialClient(ctx, { key: 'github' }),
+	).resolves.toMatchObject({
+		key: 'github',
+		name: 'gh-pat',
+		kind: 'secret',
+	})
+
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		{
+			key: 'github',
+			kind: 'oauth',
+			provider: 'github',
+			description: 'OAuth only',
+			multiple: false,
+		},
+	])
+	await expect(
+		rejection(openCredentialClient(ctx, { key: 'github' })),
+	).resolves.toMatchObject({ body: { code: 'credential_unbound' } })
+})
+
 test('credential.named works in ad hoc code and unshared personal packages only', async () => {
 	const t = await setup()
 	await t.storeKey({ name: 'resend-prod' })
@@ -849,6 +896,71 @@ test('stored mappings pick the credential: trigger override, then your default, 
 	await expect(open(bea)).rejects.toMatchObject({
 		body: { code: 'credential_unbound' },
 	})
+})
+
+test('a stored mapping stops applying when the need changes, and a corrupt row reads as unset', async () => {
+	const t = await setup()
+	const keyA = await t.storeKey({ name: 'resend-a' })
+	await t.db
+		.prepare(
+			`INSERT INTO mcp_server_settings (id, user_id, name, url, provider, enabled)
+			 VALUES ('mcp-resend', ?, 'resend-mcp', 'https://mcp.resend.example/sse', 'resend', 1)`,
+		)
+		.bind(t.acmeId)
+		.run()
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme-clients/digest',
+	})
+	const mapOrg = (credentialIds: Array<string>) =>
+		buildWriteCredentialMappingStatement({
+			db: t.db,
+			orgId: t.acmeId,
+			packageId,
+			needKey: 'resend',
+			target: { target: 'org' },
+			credentialIds,
+			updatedByUserId: t.people.bea.personId,
+			now,
+		}).run()
+	const open = () =>
+		openCredentialClient(
+			t.contextFor({ request: t.requestAs('bea', 'owner'), packageId }),
+			{ key: 'resend' },
+		)
+
+	mockNeeds([{ key: 'resend' }])
+	await mapOrg([keyA])
+	await expect(open()).resolves.toMatchObject({ name: 'resend-a' })
+	mockNeeds([{ key: 'resend', provider: 'postmark' }])
+	await expect(open()).rejects.toMatchObject({
+		body: { code: 'credential_unbound' },
+	})
+
+	mockNeeds([{ key: 'resend', kind: undefined }])
+	await mapOrg(['mcp-resend'])
+	await expect(open()).resolves.toMatchObject({
+		name: 'resend-a',
+		kind: 'secret',
+	})
+
+	await mapOrg([])
+	await t.db
+		.prepare(`UPDATE credential_mappings SET credential_ids_json = '{bad'`)
+		.run()
+	consoleError.mockImplementation(() => {})
+	await expect(open()).resolves.toMatchObject({ name: 'resend-a' })
+	expect(consoleError).toHaveBeenCalledWith(
+		expect.stringContaining('corrupt credential ids'),
+	)
+
+	expect(
+		await deleteCredentialMappingsForPackage({
+			db: t.db,
+			orgId: t.acmeId,
+			packageId,
+		}),
+	).toBe(1)
 })
 
 test('a call map pick wins over a stored mapping, and credentials() opens every mapped credential', async () => {

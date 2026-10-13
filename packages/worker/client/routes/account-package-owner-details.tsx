@@ -30,6 +30,7 @@ import {
 import { RecordChips, recordBodyCss } from './record-table.tsx'
 import { AccountPackageDeleteDialog } from './account-package-delete-dialog.tsx'
 import { AccountPackageForkAdoption } from './account-package-fork-adoption.tsx'
+import { AccountPackageUpdatePublicListing } from './account-package-update-public-listing.tsx'
 import {
 	type AccountPackageDetail,
 	type AccountPackagesLoaderData,
@@ -322,6 +323,10 @@ export function AccountPackageOwnerDetails(
 						mix={css({ display: 'grid', gap: spacing.md })}
 						data-testid="package-visibility-controls"
 					>
+						<AccountPackageUpdatePublicListing
+							packageDetail={packageDetail}
+							onPackagesPayload={handle.props.onPackagesPayload}
+						/>
 						<div mix={css({ display: 'grid', gap: spacing.xs })}>
 							<p mix={css({ margin: 0, color: colors.textMuted })}>
 								{packageDetail.isPrivate

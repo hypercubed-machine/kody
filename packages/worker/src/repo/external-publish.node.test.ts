@@ -112,7 +112,8 @@ vi.mock(
 	},
 )
 
-const { publishFromExternalRef } = await import('./external-publish.ts')
+const { finalizePublishedEntitySource, publishFromExternalRef } =
+	await import('./external-publish.ts')
 
 const manifest = {
 	name: '@scope/demo',
@@ -399,6 +400,146 @@ test('publishFromExternalRef fails when projection refresh fails after commit', 
 		sourceId: 'source-1',
 		publishedCommit: 'commit-new',
 	})
+})
+
+test('same-commit finalize keeps the live snapshot when projection fails', async () => {
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.writePublishedSourceSnapshot.mockResolvedValue('snapshot-key')
+	mockModule.deletePublishedSourceSnapshot.mockClear()
+	mockModule.refreshSavedPackageProjection.mockRejectedValueOnce(
+		new Error('projection unavailable'),
+	)
+
+	await expect(
+		finalizePublishedEntitySource({
+			env: kvEnv,
+			source: source({
+				published_commit: 'commit-same',
+			}) as ReturnType<typeof source> & { entity_kind: 'package' },
+			publishedCommit: 'commit-same',
+			files: { 'package.json': '{}' },
+			baseUrl: 'https://kody.test',
+		}),
+	).rejects.toThrow('projection unavailable')
+
+	expect(mockModule.writePublishedSourceSnapshot).toHaveBeenCalled()
+	expect(mockModule.deletePublishedSourceSnapshot).not.toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-same' }),
+	)
+})
+
+test('finalize writes the published snapshot before flipping published_commit', async () => {
+	const callOrder: Array<string> = []
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.writePublishedSourceSnapshot.mockImplementation(async () => {
+		callOrder.push('writePublishedSourceSnapshot')
+		return 'snapshot-key'
+	})
+	mockModule.updateEntitySource.mockImplementation(async () => {
+		callOrder.push('updateEntitySource')
+		return true
+	})
+	mockModule.refreshSavedPackageProjection.mockResolvedValue(undefined)
+
+	await finalizePublishedEntitySource({
+		env: kvEnv,
+		source: source() as ReturnType<typeof source> & { entity_kind: 'package' },
+		publishedCommit: 'commit-new',
+		files: { 'package.json': '{}' },
+		baseUrl: 'https://kody.test',
+	})
+
+	expect(callOrder.slice(0, 2)).toEqual([
+		'writePublishedSourceSnapshot',
+		'updateEntitySource',
+	])
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-new' }),
+	)
+})
+
+test('finalize leaves published_commit alone when snapshot write fails', async () => {
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.writePublishedSourceSnapshot.mockRejectedValueOnce(
+		new Error('kv unavailable'),
+	)
+	mockModule.updateEntitySource.mockClear()
+
+	await expect(
+		finalizePublishedEntitySource({
+			env: kvEnv,
+			source: source() as ReturnType<typeof source> & {
+				entity_kind: 'package'
+			},
+			publishedCommit: 'commit-new',
+			files: { 'package.json': '{}' },
+			baseUrl: 'https://kody.test',
+		}),
+	).rejects.toThrow('kv unavailable')
+
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+	expect(mockModule.deletePublishedSourceSnapshot).not.toHaveBeenCalled()
+})
+
+test('finalize deletes the orphan snapshot when the pointer flip fails', async () => {
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.writePublishedSourceSnapshot.mockResolvedValue('snapshot-key')
+	mockModule.updateEntitySource.mockRejectedValueOnce(
+		new Error('d1 unavailable'),
+	)
+	// Pointer never moved — live row still on the previous tip.
+	mockModule.getEntitySourceById.mockResolvedValueOnce(
+		source({ published_commit: 'commit-old' }),
+	)
+	mockModule.deletePublishedSourceSnapshot.mockClear()
+
+	await expect(
+		finalizePublishedEntitySource({
+			env: kvEnv,
+			source: source() as ReturnType<typeof source> & {
+				entity_kind: 'package'
+			},
+			publishedCommit: 'commit-new',
+			files: { 'package.json': '{}' },
+			baseUrl: 'https://kody.test',
+		}),
+	).rejects.toThrow('d1 unavailable')
+
+	expect(mockModule.deletePublishedSourceSnapshot).toHaveBeenCalledWith({
+		env: kvEnv,
+		sourceId: 'source-1',
+		publishedCommit: 'commit-new',
+	})
+})
+
+test('finalize keeps the snapshot when a concurrent pointer flip already landed', async () => {
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.writePublishedSourceSnapshot.mockResolvedValue('snapshot-key')
+	mockModule.updateEntitySource.mockRejectedValueOnce(
+		new Error('d1 unavailable'),
+	)
+	// Another writer already advertised commit-new.
+	mockModule.getEntitySourceById.mockResolvedValueOnce(
+		source({ published_commit: 'commit-new' }),
+	)
+	mockModule.deletePublishedSourceSnapshot.mockClear()
+
+	await expect(
+		finalizePublishedEntitySource({
+			env: kvEnv,
+			source: source() as ReturnType<typeof source> & {
+				entity_kind: 'package'
+			},
+			publishedCommit: 'commit-new',
+			files: { 'package.json': '{}' },
+			baseUrl: 'https://kody.test',
+		}),
+	).rejects.toThrow('d1 unavailable')
+
+	expect(mockModule.deletePublishedSourceSnapshot).not.toHaveBeenCalled()
 })
 
 test('locked package finishes checks then withholds published_commit unless allowLockedPublish', async () => {

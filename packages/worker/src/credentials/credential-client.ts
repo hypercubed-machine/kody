@@ -20,7 +20,10 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { getDiscoverablePlatformOauthApp } from '#worker/integrations/platform-apps.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { type PackageCredentialKind } from '#worker/package-registry/types.ts'
+import {
+	isFetchCapableCredentialKind,
+	type PackageCredentialKind,
+} from '#worker/package-registry/types.ts'
 import { enablementIdOf } from '#worker/request-context/request-context.ts'
 import { buildCredentialCreateUrl } from '#universal/credential-contracts.ts'
 import {
@@ -31,6 +34,7 @@ import {
 import {
 	findCredentialById,
 	listUsableCredentials,
+	resolveNeedCandidates,
 	type UsableCredential,
 } from './credential-candidates.ts'
 import {
@@ -192,6 +196,11 @@ type NeedTarget = {
 	kind: PackageCredentialKind | null
 	provider: string
 	describe: string
+	/**
+	 * How an explicit pick's kind is checked: declared kind, any fetch-capable
+	 * kind when the need omits kind, or any kind for an ad-hoc provider key.
+	 */
+	match: 'exact' | 'fetch-capable' | 'any'
 }
 
 const maxKeyLength = 100
@@ -318,14 +327,28 @@ async function createUrlForNeed(
 }
 
 function needTarget(key: string, need: CredentialNeed | null): NeedTarget {
-	const kind = need?.kind ?? null
-	const provider = need?.provider ?? key
+	if (!need) {
+		return {
+			kind: null,
+			provider: key,
+			describe: `provider "${key}"`,
+			match: 'any',
+		}
+	}
+	const provider = need.provider
+	if (need.kind) {
+		return {
+			kind: need.kind,
+			provider,
+			describe: `need "${key}" (${need.kind} from provider "${provider}")`,
+			match: 'exact',
+		}
+	}
 	return {
-		kind,
+		kind: null,
 		provider,
-		describe: kind
-			? `need "${key}" (${kind} from provider "${provider}")`
-			: `provider "${provider}"`,
+		describe: `need "${key}" (any fetch-capable credential from provider "${provider}")`,
+		match: 'fetch-capable',
 	}
 }
 
@@ -392,7 +415,7 @@ function pickOne(input: {
 			'credential_unbound',
 			`No credential you can use matches ${input.describe}.${
 				input.possibleMatches.length > 0
-					? ' Some of the same kind have no provider; pick one by name, or set its provider with credentialUpdate so it resolves on its own.'
+					? ' Some matching credentials have no provider; pick one by name, or set its provider with credentialUpdate so it resolves on its own.'
 					: ''
 			}${input.hint ? ` ${input.hint}` : ''}`,
 			{
@@ -417,6 +440,32 @@ function pickOne(input: {
 }
 
 /**
+ * A stored mapping follows the explicit-pick rule: the kind filter must match,
+ * and so must the provider when the credential has one. A need whose kind or
+ * provider changed after mapping no longer takes the old credential.
+ */
+function mappedCredentialFits(
+	credential: UsableCredential,
+	target: NeedTarget,
+): boolean {
+	if (credential.provider && credential.provider !== target.provider) {
+		return false
+	}
+	switch (target.match) {
+		case 'exact':
+			return target.kind === null || credential.kind === target.kind
+		case 'fetch-capable':
+			return isFetchCapableCredentialKind(credential.kind)
+		case 'any':
+			return true
+		default: {
+			const exhaustive: never = target.match
+			throw new Error(`Unhandled need match: ${String(exhaustive)}`)
+		}
+	}
+}
+
+/**
  * A package need's stored mapping (trigger override, then the actor's own
  * default, then the org default), or null to auto-resolve. Interactive runs
  * have no trigger override; a trigger run acts as its enabler.
@@ -426,7 +475,7 @@ async function resolveMappedNeed(
 	input: {
 		request: RequestContext
 		key: string
-		kind: PackageCredentialKind | null
+		target: NeedTarget
 		usable: ReadonlyArray<UsableCredential>
 		createUrl: () => Promise<string>
 	},
@@ -448,7 +497,7 @@ async function resolveMappedNeed(
 		mine: layer('mine'),
 		org: layer('org'),
 		usable: input.usable,
-		kind: input.kind,
+		accepts: (credential) => mappedCredentialFits(credential, input.target),
 	})
 	if (!resolved) return null
 	const where =
@@ -509,8 +558,8 @@ function findByName(
 }
 
 /**
- * An explicit call-map pick (resolution rule 2): the kind must match, and the
- * provider must match when both sides have one.
+ * An explicit call-map pick (resolution rule 2): the kind filter must match,
+ * and the provider must match when both sides have one.
  */
 function pickExplicit(input: {
 	key: string
@@ -525,11 +574,20 @@ function pickExplicit(input: {
 		input.key,
 		input.baseUrl,
 	)
-	const { kind, provider } = input.target
-	if (kind && credential.kind !== kind) {
+	const { kind, provider, match } = input.target
+	if (match === 'exact' && kind && credential.kind !== kind) {
 		throw refusal(
 			'invalid_request',
 			`credentials.${input.key} picks "${credential.name}", a ${credential.kind} credential; this need takes a ${kind} credential.`,
+		)
+	}
+	if (
+		match === 'fetch-capable' &&
+		!isFetchCapableCredentialKind(credential.kind)
+	) {
+		throw refusal(
+			'invalid_request',
+			`credentials.${input.key} picks "${credential.name}", a ${credential.kind} credential; this need takes any fetch-capable credential (secret, oauth, or login).`,
 		)
 	}
 	if (credential.provider && credential.provider !== provider) {
@@ -559,7 +617,7 @@ async function resolveKey(
 		const mapped = await resolveMappedNeed(ctx, {
 			request: requireActorRequest(ctx),
 			key,
-			kind: target.kind,
+			target,
 			usable,
 			createUrl: () =>
 				createUrlForNeed(ctx, { key, provider: target.provider, need }),
@@ -569,11 +627,14 @@ async function resolveKey(
 				(credential) => ({ credential, hint: null }),
 			)
 		}
-		const candidates = usable.filter(
-			(candidate) =>
-				candidate.provider === target.provider &&
-				(target.kind === null || candidate.kind === target.kind),
-		)
+		const { candidates, possibleMatches } = need
+			? resolveNeedCandidates(need, usable)
+			: {
+					candidates: usable.filter(
+						(candidate) => candidate.provider === target.provider,
+					),
+					possibleMatches: [],
+				}
 		const createUrl =
 			candidates.length === 0
 				? await createUrlForNeed(ctx, {
@@ -585,12 +646,7 @@ async function resolveKey(
 		const credential = pickOne({
 			key,
 			candidates,
-			possibleMatches: target.kind
-				? usable.filter(
-						(candidate) =>
-							candidate.kind === target.kind && candidate.provider === null,
-					)
-				: [],
+			possibleMatches,
 			describe: target.describe,
 			hint: secretSetHint(target.kind, target.provider),
 			createUrl,
