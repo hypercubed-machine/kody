@@ -35,8 +35,10 @@ vi.mock('#app/frame-registry.ts', () => ({
 	handleFrameRequest: async () => null,
 }))
 
-const { createCommunityPackageSettingsHandler } =
-	await import('./community-detail.tsx')
+const {
+	createCommunityPackageCredentialsHandler,
+	createCommunityPackageSettingsHandler,
+} = await import('./community-detail.tsx')
 
 test('package settings 404 unless the viewer can manage the package', async () => {
 	const handler = createCommunityPackageSettingsHandler({} as Env)
@@ -168,5 +170,53 @@ test('package settings Files tab uses the listing default branch and id', async 
 				}),
 			}),
 		}),
+	)
+})
+
+test('package credential tabs 404 outside the package org and keep the tab on a move', async () => {
+	const handler = createCommunityPackageCredentialsHandler(
+		{} as Env,
+		'mappings',
+	)
+	const requestTab = () =>
+		handler.handler({
+			request: new Request('https://example.com/@kentcdodds/digest/mappings'),
+			params: { username: 'kentcdodds', kodyId: 'digest' },
+			url: new URL('https://example.com/@kentcdodds/digest/mappings'),
+		} as never)
+	const page = {
+		kind: 'page',
+		username: 'kentcdodds',
+		kodyId: 'digest',
+		listing: null,
+		ownerPackage: { id: 'pkg-1', name: 'digest', isPrivate: true },
+		viewerIsOwner: false,
+		viewerCanManage: false,
+		loggedIn: true,
+		invocationUrlOrigin: 'https://example.com',
+	}
+
+	mockModule.renderAppPage.mockClear()
+	mockModule.loadPackagePage.mockResolvedValue(page)
+	expect((await requestTab()).status).toBe(404)
+
+	mockModule.renderAppPage.mockClear()
+	mockModule.loadPackagePage.mockResolvedValue({ ...page, viewerIsOwner: true })
+	const member = await requestTab()
+	expect(member.status).toBe(200)
+	expect(mockModule.renderAppPage).toHaveBeenCalledWith(
+		expect.objectContaining({ title: 'digest default mappings' }),
+	)
+	expect(mockModule.renderAppPage.mock.calls[0]?.[0].loaderData).toBeUndefined()
+
+	mockModule.loadPackagePage.mockResolvedValue({
+		kind: 'redirect',
+		to: '/@acme/digest',
+		shared: false,
+	})
+	const moved = await requestTab()
+	expect(moved.status).toBe(302)
+	expect(moved.headers.get('location')).toBe(
+		'https://example.com/@acme/digest/mappings',
 	)
 })

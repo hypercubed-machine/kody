@@ -4,6 +4,10 @@ import { isAccountConnectionAgent } from '#universal/account-connections.ts'
 import { type AppLoaderData } from '#universal/loader-data.ts'
 import { onboardingAgentLabel } from '#universal/onboarding-mcp-clients.ts'
 import { oauthPaths } from '#universal/oauth-paths.ts'
+import {
+	type PackageCredentialsTab,
+	packageCredentialsTabLabel,
+} from '#universal/package-credentials-page.ts'
 import { routePattern } from '#universal/route-pattern.ts'
 import { routes } from '#universal/routes.ts'
 import { docHref, docsIntroSlug } from '#universal/docs-nav.ts'
@@ -94,6 +98,21 @@ function truncateText(text: string, maxLength: number) {
 
 function titleOnly(title: string): DocumentHeadDescriptor {
 	return { title }
+}
+
+function packageCredentialsHead(
+	tab: PackageCredentialsTab,
+): DocumentHeadResolver {
+	return ({ loaderData, pathname }) => {
+		const page = loaderData?.packageCredentials
+		const label = packageCredentialsTabLabel(tab)
+		if (page && !page.ok) return titleOnly(NOT_FOUND_DOCUMENT_TITLE)
+		if (!page) return titleOnly(`Package ${label.toLowerCase()}`)
+		return {
+			title: `${page.shell.name} ${label.toLowerCase()}`,
+			canonicalPath: pathname,
+		}
+	}
 }
 
 /**
@@ -329,6 +348,12 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
+	[routePattern(routes.communityPackageCredentials)]:
+		packageCredentialsHead('credentials'),
+	[routePattern(routes.communityPackageMappings)]:
+		packageCredentialsHead('mappings'),
+	[routePattern(routes.communityPackageTriggers)]:
+		packageCredentialsHead('triggers'),
 	[routePattern(routes.communityDetailFiles)]: ({ loaderData, pathname }) => {
 		const files = loaderData?.packageFiles
 		if (!files?.ok) return titleOnly('Package files')

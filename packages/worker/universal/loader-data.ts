@@ -21,6 +21,7 @@ import {
 } from '#universal/community-categories.ts'
 import { type CommunityListingSort } from '#universal/community-search.ts'
 import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
+import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
 import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
 import { type WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
@@ -2661,6 +2662,7 @@ export type AppLoaderData = {
 	accountPackageApprovePublish?: AccountPackageApprovePublishLoaderData
 	accountPackageApproveCapabilities?: AccountPackageApproveCapabilitiesLoaderData
 	accountCredentials?: AccountCredentialsResponse
+	packageCredentials?: PackageCredentialsLoaderData
 	accountSecrets?: AccountSecretsLoaderData
 	accountSecretProviders?: AccountSecretProvidersLoaderData
 	accountValues?: AccountValuesLoaderData

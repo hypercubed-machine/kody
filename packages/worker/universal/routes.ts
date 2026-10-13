@@ -281,6 +281,11 @@ export const routes = route({
 	// public). Third-segment noun so it cannot collide with a kodyId.
 	communityPackageIcon: '/@:username/:kodyId/icon/:iconCommit',
 	communityPackageSettings: '/@:username/:kodyId/settings',
+	// Package Credentials / Default mappings / Triggers tabs (people with
+	// package:execute); data comes from communityPackageCredentialsApi.
+	communityPackageCredentials: '/@:username/:kodyId/credentials',
+	communityPackageMappings: '/@:username/:kodyId/mappings',
+	communityPackageTriggers: '/@:username/:kodyId/triggers',
 	communityPackageApprovePublish: '/@:username/:kodyId/approve-publish',
 	communityPackageApproveCapabilities:
 		'/@:username/:kodyId/approve-capabilities',

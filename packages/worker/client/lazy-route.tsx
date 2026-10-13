@@ -325,6 +325,9 @@ registerPreloadPatterns(
 		routePattern(routes.communityDetail),
 		routePattern(routes.communityPackage),
 		routePattern(routes.communityPackageSettings),
+		routePattern(routes.communityPackageCredentials),
+		routePattern(routes.communityPackageMappings),
+		routePattern(routes.communityPackageTriggers),
 	],
 	{
 		name: 'community-area',
