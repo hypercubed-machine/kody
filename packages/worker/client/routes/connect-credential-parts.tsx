@@ -181,7 +181,9 @@ export function renderPackageAccess(input: {
 					type="radio"
 					name="connect-credential-package-scope"
 					checked={state.packageScope === 'org'}
-					mix={on('change', () => update({ packageScope: 'org' }))}
+					mix={on('change', () =>
+						update({ packageScope: 'org', replaceExisting: false }),
+					)}
 				/>
 				<span>
 					Packages in this org (lock it to some below, or leave it open)
@@ -193,7 +195,9 @@ export function renderPackageAccess(input: {
 					name="connect-credential-package-scope"
 					checked={state.packageScope === 'package'}
 					disabled={packages.length === 0}
-					mix={on('change', () => update({ packageScope: 'package' }))}
+					mix={on('change', () =>
+						update({ packageScope: 'package', replaceExisting: false }),
+					)}
 				/>
 				<span>
 					One package only (a package key that no other package or agent code
@@ -207,7 +211,10 @@ export function renderPackageAccess(input: {
 					mix={[
 						css(inputCss),
 						on('change', (event) =>
-							update({ packageId: event.currentTarget.value }),
+							update({
+								packageId: event.currentTarget.value,
+								replaceExisting: false,
+							}),
 						),
 					]}
 				>
