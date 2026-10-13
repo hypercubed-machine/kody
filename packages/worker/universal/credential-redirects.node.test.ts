@@ -28,7 +28,7 @@ test('old org index pages go to the Credentials list filtered by kind', () => {
 	)
 })
 
-test('deeper flows, /connect/oauth, and other sections keep serving', () => {
+test('deeper flows, /connect/oauth, Secret providers, and other sections keep serving', () => {
 	for (const path of [
 		'/@acme/-/secret-providers',
 		'/@acme/-/secret-providers?q=vault',
