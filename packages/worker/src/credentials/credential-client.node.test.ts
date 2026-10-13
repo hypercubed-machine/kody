@@ -118,6 +118,7 @@ async function setup() {
 		provider?: string | null
 		hosts?: Array<string>
 		inject?: unknown
+		kind?: 'secret' | 'url' | 'login' | 'signing'
 	}) => {
 		const ownerId = input.ownerId ?? acmeId
 		await saveSecret({
@@ -130,13 +131,14 @@ async function setup() {
 		const row = await db
 			.prepare(
 				`UPDATE secret_entries
-				SET kind = 'secret', provider = ?, allowed_hosts = ?, inject_json = ?
+				SET kind = ?, provider = ?, allowed_hosts = ?, inject_json = ?
 				WHERE name = ? AND bucket_id IN (
 					SELECT id FROM secret_buckets WHERE user_id = ? AND scope = 'user'
 				)
 				RETURNING id`,
 			)
 			.bind(
+				input.kind ?? 'secret',
 				input.provider === undefined ? 'resend' : input.provider,
 				JSON.stringify(input.hosts ?? ['api.resend.com']),
 				JSON.stringify(
@@ -785,6 +787,38 @@ test('a call map pick must match the need kind and provider, and a pick with no 
 	expect(loose.name).toBe('loose-key')
 	expect(loose.hint).toContain('Set its provider to "resend"')
 	expect(JSON.stringify(loose)).not.toContain(resendKey)
+})
+
+test('a call map pick for an omitted-kind need rejects non-fetch-capable credentials', async () => {
+	const t = await setup()
+	await t.storeKey({ name: 'gh-pat', provider: 'github' })
+	await t.storeKey({
+		name: 'gh-sign',
+		provider: 'github',
+		kind: 'signing',
+	})
+	const request = t.requestAs('bea', 'owner')
+	const packageId = await t.savePackage({ ownerId: t.acmeId, name: '@acme/m' })
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		{
+			key: 'github',
+			provider: 'github',
+			description: 'Read PRs',
+			multiple: false,
+		},
+	])
+	const open = (credentials: CredentialCallMapInput) =>
+		openCredentialClient(t.contextFor({ request, packageId, credentials }), {
+			key: 'github',
+		})
+	await expect(open({ github: 'gh-pat' })).resolves.toMatchObject({
+		name: 'gh-pat',
+		kind: 'secret',
+	})
+	await expect(rejection(open({ github: 'gh-sign' }))).resolves.toMatchObject({
+		body: { code: 'invalid_request' },
+		message: expect.stringContaining('takes a fetch-capable credential'),
+	})
 })
 
 test('a call map is validated before code runs: unknown keys fail an invoke and warn ad hoc code', async () => {

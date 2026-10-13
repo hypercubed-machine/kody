@@ -19,7 +19,10 @@ import { type CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { type PackageCredentialKind } from '#worker/package-registry/types.ts'
+import {
+	isFetchCapableCredentialKind,
+	type PackageCredentialKind,
+} from '#worker/package-registry/types.ts'
 import {
 	CredentialClientHandleError,
 	signCredentialClientHandle,
@@ -346,8 +349,9 @@ function findByName(
 }
 
 /**
- * An explicit call-map pick (resolution rule 2): the kind must match, and the
- * provider must match when both sides have one.
+ * An explicit call-map pick (resolution rule 2): the kind must match (or be
+ * fetch-capable when the need omits kind), and the provider must match when
+ * both sides have one.
  */
 function pickExplicit(input: {
 	key: string
@@ -357,10 +361,13 @@ function pickExplicit(input: {
 }): Picked {
 	const credential = findByName(input.usable, input.pick, input.key)
 	const { kind, provider } = input.target
-	if (kind && credential.kind !== kind) {
+	const kindMatches = kind
+		? credential.kind === kind
+		: isFetchCapableCredentialKind(credential.kind)
+	if (!kindMatches) {
 		throw refusal(
 			'invalid_request',
-			`credentials.${input.key} picks "${credential.name}", a ${credential.kind} credential; this need takes a ${kind} credential.`,
+			`credentials.${input.key} picks "${credential.name}", a ${credential.kind} credential; this need takes ${kind ? `a ${kind}` : 'a fetch-capable'} credential.`,
 		)
 	}
 	if (credential.provider && credential.provider !== provider) {
