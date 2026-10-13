@@ -24,6 +24,7 @@ import {
 	credentialCreateTitle,
 	expiresAtDateValue,
 	expiresAtHasTime,
+	existingKindConflict,
 	findExistingOrgKey,
 	findMatchingCredentials,
 	keyFormPackageId,
@@ -160,6 +161,12 @@ export function ConnectCredentialRoute(handle: Handle) {
 			current.name,
 			keyFormPackageId(current),
 		)
+		const kindConflict = existingKindConflict(existing, 'secret')
+		if (kindConflict) {
+			message = kindConflict
+			handle.update()
+			return
+		}
 		if (existing && !current.replaceExisting) {
 			message = `A key named ${current.name.trim()} already exists. Choose “Replace its value” or pick another name.`
 			handle.update()
@@ -208,6 +215,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 		linkProblem: string | null
 	}) {
 		const { state, existing } = input
+		const kindConflict = existingKindConflict(existing, 'secret')
 		const update = (patch: Partial<KeyFormState>) => {
 			form = { ...state, ...patch }
 			handle.update()
@@ -275,7 +283,14 @@ export function ConnectCredentialRoute(handle: Handle) {
 							<code>{`{{secret:${state.name || 'NAME'}}}`}</code>.
 						</span>
 					</div>
-					{existing ? (
+					{kindConflict ? (
+						<p
+							mix={css(errorCss)}
+							data-testid="connect-credential-kind-conflict"
+						>
+							{kindConflict}
+						</p>
+					) : existing ? (
 						<label
 							mix={css({
 								display: 'flex',
@@ -287,9 +302,16 @@ export function ConnectCredentialRoute(handle: Handle) {
 								type="checkbox"
 								checked={state.replaceExisting}
 								data-testid="connect-credential-replace"
-								mix={on('change', (event) =>
-									update({ replaceExisting: event.currentTarget.checked }),
-								)}
+								mix={on('change', (event) => {
+									const replaceExisting = event.currentTarget.checked
+									update({
+										replaceExisting,
+										provider:
+											replaceExisting && !state.provider.trim()
+												? (existing.provider ?? '')
+												: state.provider,
+									})
+								})}
 							/>
 							<span>
 								A key named <code>{existing.name}</code> already exists. Replace
@@ -430,7 +452,9 @@ export function ConnectCredentialRoute(handle: Handle) {
 					) : null}
 					<button
 						type="submit"
-						disabled={saving || input.linkProblem !== null}
+						disabled={
+							saving || input.linkProblem !== null || kindConflict !== null
+						}
 						data-testid="connect-credential-save"
 						mix={css(primaryButtonCss)}
 					>

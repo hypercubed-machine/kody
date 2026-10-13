@@ -1238,6 +1238,8 @@ async function handleSaveAction(input: {
 	const provider = providerText
 		? credentialProviderSchema.safeParse(providerText)
 		: null
+	// An empty string clears the provider; null or a missing field keeps it.
+	const clearProvider = providerText === ''
 	if (provider && !provider.success) {
 		return jsonResponse(
 			{ ok: false, error: provider.error.issues[0]?.message },
@@ -1380,7 +1382,7 @@ async function handleSaveAction(input: {
 
 		// Only org Keys carry credential fields; the link's provider makes the
 		// new Key match the need that asked for it.
-		if (provider?.success && scope === 'user') {
+		if ((provider?.success || clearProvider) && scope === 'user') {
 			const stored = await findSecret({
 				env: input.env,
 				userId: ownerIdFromCaller({
@@ -1403,7 +1405,7 @@ async function handleSaveAction(input: {
 						user: input.user.mcpUser,
 					}),
 					credentialId: stored.credentialId,
-					update: { provider: provider.data },
+					update: { provider: provider?.success ? provider.data : null },
 					audit: orgAuditWriterFromRequest(input.env, input.user.request),
 				})
 			}
