@@ -363,7 +363,7 @@ const knownProviderIconIds = [
 	'zoom',
 ] as const
 
-export type ProviderIconId = (typeof knownProviderIconIds)[number]
+type ProviderIconId = (typeof knownProviderIconIds)[number]
 
 const providerIconRenderers: Record<
 	ProviderIconId,
@@ -441,33 +441,6 @@ const providerIconHosts: Record<string, ProviderIconId> = {
 
 function isProviderIconId(value: string): value is ProviderIconId {
 	return (knownProviderIconIds as ReadonlyArray<string>).includes(value)
-}
-
-/**
- * Maps a connect-page provider key (`google-youtube-brand`) or authorize
- * host (`accounts.google.com`) onto an inline brand mark. `x` only matches
- * exact / `x-…` / twitter names so short keys like `example` stay unmatched.
- */
-export function resolveProviderIconId(input: {
-	providerKey?: string | null
-	host?: string | null
-}): ProviderIconId | null {
-	const key = input.providerKey?.trim().toLowerCase() ?? ''
-	if (isProviderIconId(key)) return key
-	if (key === 'twitter' || key.startsWith('x-')) return 'x'
-	if (key) {
-		for (const id of knownProviderIconIds) {
-			if (id === 'x') continue
-			if (key.startsWith(`${id}-`) || key.endsWith(`-${id}`)) return id
-		}
-	}
-	const host = input.host?.trim().toLowerCase() ?? ''
-	if (!host) return null
-	if (providerIconHosts[host]) return providerIconHosts[host]
-	for (const [known, id] of Object.entries(providerIconHosts)) {
-		if (host === known || host.endsWith(`.${known}`)) return id
-	}
-	return null
 }
 
 export function ProviderIcon(
