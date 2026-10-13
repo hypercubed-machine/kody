@@ -11,7 +11,11 @@ import {
 	credentialCreateHandoffHref,
 	credentialCreateMode,
 	findExistingOrgKey,
+	expiresAtDateValue,
+	expiresAtHasTime,
 	findMatchingCredentials,
+	keyFormProblem,
+	keyLinkProblem,
 	parseHostsInput,
 	writeCredentialCreateKind,
 } from './connect-credential-shared.ts'
@@ -92,6 +96,9 @@ test('the Key form starts from the link and saves an org Key', () => {
 		provider: 'openai',
 		hosts: 'api.openai.com\nuploads.openai.com',
 		expiresAt: '',
+		packageScope: 'org',
+		packageId: '',
+		allowedPackages: [],
 		replaceExisting: false,
 	})
 	expect(
@@ -104,6 +111,7 @@ test('the Key form starts from the link and saves an org Key', () => {
 		currentId: null,
 		name: 'OPENAI_API_KEY',
 		scope: 'user',
+		packageId: null,
 		value: 'sk-1',
 		description: 'For summaries',
 		provider: 'openai',
@@ -137,6 +145,90 @@ test('replacing an existing Key keeps its hosts and package locks', () => {
 		allowedHosts: ['api.openai.com', 'x.dev'],
 		allowedPackages: ['pkg-1'],
 	})
+})
+
+test('package Keys, expiry, and package locks come from the link and save like the legacy intake', () => {
+	const packageForm = createKeyFormState(
+		query('name=TOKEN&scope=package&packageId=pkg-1&expiresAt=2026-12-31'),
+	)
+	expect(packageForm).toMatchObject({
+		packageScope: 'package',
+		packageId: 'pkg-1',
+		expiresAt: '2026-12-31T00:00:00.000Z',
+		allowedPackages: [],
+	})
+	expect(expiresAtDateValue(packageForm.expiresAt)).toBe('2026-12-31')
+	expect(expiresAtHasTime(packageForm.expiresAt)).toBe(false)
+	expect(expiresAtHasTime('2026-12-31T15:30:00.000Z')).toBe(true)
+	expect(
+		buildKeySaveBody({
+			form: { ...packageForm, value: 'v', allowedPackages: ['pkg-9'] },
+			existing: null,
+		}),
+	).toMatchObject({
+		scope: 'package',
+		packageId: 'pkg-1',
+		expiresAt: '2026-12-31T00:00:00.000Z',
+		allowedPackages: [],
+	})
+
+	const lockedForm = createKeyFormState(
+		query('name=TOKEN&allowedPackages=pkg-2,pkg-1'),
+	)
+	expect(lockedForm).toMatchObject({
+		packageScope: 'org',
+		allowedPackages: ['pkg-2', 'pkg-1'],
+	})
+	expect(
+		buildKeySaveBody({ form: { ...lockedForm, value: 'v' }, existing: null }),
+	).toMatchObject({
+		scope: 'user',
+		packageId: null,
+		allowedPackages: ['pkg-1', 'pkg-2'],
+	})
+
+	const packageKey = credential({
+		id: 'p1',
+		name: 'TOKEN',
+		packageId: 'pkg-1',
+		expiresAt: '2027-01-01T00:00:00.000Z',
+	})
+	const orgKey = credential({ id: 'o1', name: 'TOKEN' })
+	expect(findExistingOrgKey([orgKey, packageKey], 'TOKEN', 'pkg-1')).toBe(
+		packageKey,
+	)
+	expect(findExistingOrgKey([orgKey, packageKey], 'TOKEN')).toBe(orgKey)
+	expect(
+		buildKeySaveBody({
+			form: {
+				...createKeyFormState(query('name=TOKEN&packageId=pkg-1')),
+				value: 'v',
+				replaceExisting: true,
+			},
+			existing: packageKey,
+		}),
+	).toMatchObject({
+		currentId: 'package::pkg-1::TOKEN',
+		expiresAt: '2027-01-01T00:00:00.000Z',
+	})
+})
+
+test('a link the form cannot honor says why, and a package Key needs its package', () => {
+	const packages = [{ id: 'pkg-1' }]
+	const problem = (search: string) =>
+		keyLinkProblem({ query: query(search), packages })
+	expect(problem('name=x&packageId=pkg-1&expiresAt=2026-12-31')).toBeNull()
+	expect(problem('expiresAt=soon')).toContain('invalid expiresAt')
+	expect(createKeyFormState(query('expiresAt=soon')).expiresAt).toBe('')
+	expect(problem('scope=package')).toContain('names no package')
+	expect(problem('packageId=pkg-404')).toContain('not in this org')
+	expect(
+		keyFormProblem({
+			...createKeyFormState(query('name=x')),
+			packageScope: 'package',
+		}),
+	).toBe('Choose the package this key belongs to.')
+	expect(keyFormProblem(createKeyFormState(query('name=x')))).toBeNull()
 })
 
 test('matches need a provider, and a kind when the link names one', () => {

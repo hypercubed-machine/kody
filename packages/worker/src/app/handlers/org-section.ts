@@ -208,6 +208,20 @@ export function createOrgSectionHandler(
 	}
 }
 
+/** `/@slug/-/credentials/new`: the Credentials section's creation one-pager. */
+export function createOrgCredentialNewHandler(env: Env) {
+	const credentials = createOrgSectionHandler(env, 'credentials')
+	return {
+		middleware: [],
+		handler(ctx: { request: Request; params: { orgSlug: string } }) {
+			return credentials.handler({
+				request: ctx.request,
+				params: { orgSlug: ctx.params.orgSlug, rest: 'new' },
+			})
+		},
+	} satisfies Action<typeof routes.orgCredentialNew>
+}
+
 async function renderTeamRepositoriesPage(input: {
 	env: Env
 	request: Request

@@ -3,6 +3,7 @@ import { readCurrentRouterHref } from '#client/client-router.tsx'
 import { CopyTextButton } from '#client/copy-text-button.tsx'
 import { on } from '#client/event-mixin.ts'
 import { tryConsumeRouteLoaderData } from '#client/loader-data-context.tsx'
+import { orgAccountApiReferrer } from '#client/org-account-api.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { PasswordRevealInput } from '#client/password-reveal-input.tsx'
 import {
@@ -13,6 +14,7 @@ import {
 	accountSecretsApiPath,
 	readJson,
 } from '#client/routes/account-approval-shared.ts'
+import { AccountManagementShell } from '#client/routes/account-management-components.tsx'
 import {
 	buildKeySaveBody,
 	createKeyFormState,
@@ -21,8 +23,13 @@ import {
 	credentialCreateKindSummary,
 	credentialCreateMode,
 	credentialCreateTitle,
+	expiresAtDateValue,
+	expiresAtHasTime,
 	findExistingOrgKey,
 	findMatchingCredentials,
+	keyFormPackageId,
+	keyFormProblem,
+	keyLinkProblem,
 	type KeyFormState,
 	writeCredentialCreateKind,
 } from '#client/routes/connect-credential-shared.ts'
@@ -99,10 +106,25 @@ const kindOptionUnavailableCss = {
 }
 
 const mutedCss = { margin: 0, color: colors.textMuted }
+const choiceRowCss = {
+	display: 'flex',
+	gap: spacing.sm,
+	alignItems: 'baseline',
+}
 const errorCss = { margin: 0, color: colors.danger }
 const labelHintCss = {
 	fontWeight: typography.fontWeight.normal,
 	color: colors.textMuted,
+}
+
+/**
+ * `/connect/credential` has no org; the worker redirects it to the signup
+ * org's `/@slug/-/credentials/new`, so leave the SPA and let it.
+ */
+export async function connectCredentialRedirectLoader(
+	url: URL,
+): Promise<RouteLoaderResult> {
+	return routeLoaderRedirect(`${url.pathname}${url.search}`)
 }
 
 export async function connectCredentialRouteLoader(
@@ -112,6 +134,7 @@ export async function connectCredentialRouteLoader(
 	const response = await fetch(accountCredentialsApiPath, {
 		headers: { Accept: 'application/json' },
 		credentials: 'include',
+		referrer: orgAccountApiReferrer(url.href),
 		signal,
 	})
 	if (response.status === 401) {
@@ -213,6 +236,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 	let showValue = false
 	let saving = false
 	let savedName: string | null = null
+	let savedPackageId: string | null = null
 	let message: string | null = null
 
 	function resetFor(href: string) {
@@ -239,7 +263,17 @@ export function ConnectCredentialRoute(handle: Handle) {
 		event.preventDefault()
 		if (saving || !form) return
 		const current = form
-		const existing = findExistingOrgKey(data?.credentials ?? [], current.name)
+		const problem = keyFormProblem(current)
+		if (problem) {
+			message = problem
+			handle.update()
+			return
+		}
+		const existing = findExistingOrgKey(
+			data?.credentials ?? [],
+			current.name,
+			keyFormPackageId(current),
+		)
 		if (existing && !current.replaceExisting) {
 			message = `A key named ${current.name.trim()} already exists. Choose “Replace its value” or pick another name.`
 			handle.update()
@@ -269,6 +303,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 				throw new Error(payload?.error || 'Unable to save this key.')
 			}
 			savedName = current.name.trim()
+			savedPackageId = keyFormPackageId(current)
 			form = { ...current, value: '' }
 			await refreshCredentials()
 		} catch (error) {
@@ -283,6 +318,8 @@ export function ConnectCredentialRoute(handle: Handle) {
 		state: KeyFormState
 		existing: CredentialListItem | null
 		orgSlug: string
+		packages: AccountCredentialsResponse['packages']
+		linkProblem: string | null
 	}) {
 		const { state, existing } = input
 		const update = (patch: Partial<KeyFormState>) => {
@@ -290,7 +327,11 @@ export function ConnectCredentialRoute(handle: Handle) {
 			handle.update()
 		}
 		if (savedName) {
-			const saved = findExistingOrgKey(data?.credentials ?? [], savedName)
+			const saved = findExistingOrgKey(
+				data?.credentials ?? [],
+				savedName,
+				savedPackageId,
+			)
 			return (
 				<section mix={css(cardCss)} data-testid="connect-credential-saved">
 					<p mix={css({ margin: 0 })}>
@@ -452,6 +493,11 @@ export function ConnectCredentialRoute(handle: Handle) {
 							]}
 						/>
 					</div>
+					{renderPackageAccess({
+						state,
+						packages: input.packages,
+						update,
+					})}
 					<div mix={css(fieldCss)}>
 						<label for="connect-credential-expires" mix={css(fieldLabelCss)}>
 							Expires <span mix={css(labelHintCss)}>(optional)</span>
@@ -459,7 +505,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 						<input
 							id="connect-credential-expires"
 							type="date"
-							value={state.expiresAt}
+							value={expiresAtDateValue(state.expiresAt)}
 							mix={[
 								css(inputCss),
 								on('input', (event) =>
@@ -467,7 +513,30 @@ export function ConnectCredentialRoute(handle: Handle) {
 								),
 							]}
 						/>
+						{expiresAtHasTime(state.expiresAt) ? (
+							<span
+								mix={css(mutedCss)}
+								data-testid="connect-credential-expires-time"
+							>
+								The link sets {state.expiresAt} (UTC). Pick a date to change it.
+							</span>
+						) : null}
+						{existing?.expiresAt &&
+						state.replaceExisting &&
+						!state.expiresAt ? (
+							<span mix={css(mutedCss)}>
+								Leave empty to keep its current expiry.
+							</span>
+						) : null}
 					</div>
+					{input.linkProblem ? (
+						<p
+							mix={css(errorCss)}
+							data-testid="connect-credential-link-problem"
+						>
+							{input.linkProblem}
+						</p>
+					) : null}
 					{message ? (
 						<p mix={css(errorCss)} data-testid="connect-credential-message">
 							{message}
@@ -475,7 +544,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 					) : null}
 					<button
 						type="submit"
-						disabled={saving}
+						disabled={saving || input.linkProblem !== null}
 						data-testid="connect-credential-save"
 						mix={css(primaryButtonCss)}
 					>
@@ -502,75 +571,209 @@ export function ConnectCredentialRoute(handle: Handle) {
 		const selected = query.kind
 		const kinds = query.kindLocked && selected ? [selected] : credentialKinds
 		const matches = data ? findMatchingCredentials(data.credentials, query) : []
-		const existing = findExistingOrgKey(data?.credentials ?? [], state.name)
+		const packages = data?.packages ?? []
+		const existing = findExistingOrgKey(
+			data?.credentials ?? [],
+			state.name,
+			keyFormPackageId(state),
+		)
+		const linkProblem = data ? keyLinkProblem({ query, packages }) : null
+		const scopedPackage =
+			query.packageScopedTo === null
+				? null
+				: (packages.find((entry) => entry.id === query.packageScopedTo) ?? null)
 		const pageUrl =
 			typeof window === 'undefined'
 				? href
 				: new URL(href, window.location.origin).toString()
 
 		return (
-			<section mix={css(stackedPageCss)} data-testid="connect-credential">
-				<header mix={css(pageHeaderCss)}>
-					<span mix={css(pageEyebrowCss)}>Add a credential</span>
-					<h1 mix={css(pageTitleCss)}>
-						{selected ? credentialCreateTitle(selected) : 'Add a credential'}
-					</h1>
-					<p mix={css(pageDescriptionCss)}>
-						{query.packageKodyId && query.needKey ? (
-							<>
-								For <code>{query.packageKodyId}</code>, which needs{' '}
-								<code>{query.needKey}</code>.{' '}
-							</>
-						) : null}
-						Kody keeps the value and places it on requests for you. It never
-						appears to agents or package code.
-					</p>
-				</header>
-
-				{renderMatches({ matches, orgSlug })}
-
-				<section
-					aria-label="Credential kind"
-					mix={css({ display: 'grid', gap: spacing.sm })}
-				>
-					{query.kindLocked && selected ? (
-						<p mix={css(mutedCss)}>
-							This link asks for a {credentialKindLabel(selected)} credential.
+			<AccountManagementShell>
+				<section mix={css(stackedPageCss)} data-testid="connect-credential">
+					<header mix={css(pageHeaderCss)}>
+						<span mix={css(pageEyebrowCss)}>Add a credential</span>
+						<h1 mix={css(pageTitleCss)}>
+							{selected ? credentialCreateTitle(selected) : 'Add a credential'}
+						</h1>
+						<p mix={css(pageDescriptionCss)}>
+							{query.packageKodyId && query.needKey ? (
+								<>
+									For <code>{query.packageKodyId}</code>, which needs{' '}
+									<code>{query.needKey}</code>.{' '}
+								</>
+							) : null}
+							{scopedPackage ? (
+								<>
+									Only <code>{scopedPackage.kodyId}</code> can read this
+									key.{' '}
+								</>
+							) : null}
+							Kody keeps the value and places it on requests for you. It never
+							appears to agents or package code.
 						</p>
-					) : (
-						<p mix={css(mutedCss)}>
-							{selected
-								? 'Suggested by the link. Pick another kind if it fits better.'
-								: 'What kind of credential is it?'}
-						</p>
-					)}
-					<ul mix={css(kindGridCss)}>
-						{kinds.map((kind) =>
-							renderKindOption({
-								kind,
-								selected: kind === selected,
-								href: writeCredentialCreateKind(href, kind),
-							}),
+					</header>
+
+					{renderMatches({ matches, orgSlug })}
+
+					<section
+						aria-label="Credential kind"
+						mix={css({ display: 'grid', gap: spacing.sm })}
+					>
+						{query.kindLocked && selected ? (
+							<p mix={css(mutedCss)}>
+								This link asks for a {credentialKindLabel(selected)} credential.
+							</p>
+						) : (
+							<p mix={css(mutedCss)}>
+								{selected
+									? 'Suggested by the link. Pick another kind if it fits better.'
+									: 'What kind of credential is it?'}
+							</p>
 						)}
-					</ul>
-				</section>
+						<ul mix={css(kindGridCss)}>
+							{kinds.map((kind) =>
+								renderKindOption({
+									kind,
+									selected: kind === selected,
+									href: writeCredentialCreateKind(href, kind),
+								}),
+							)}
+						</ul>
+					</section>
 
-				{selected === null
-					? null
-					: renderKindBody({
-							kind: selected,
-							search,
-							orgSlug,
-							prompt: credentialCreateAgentPrompt({
+					{selected === null
+						? null
+						: renderKindBody({
 								kind: selected,
-								query,
-								pageUrl,
-							}),
-							keyForm: () => renderKeyForm({ state, existing, orgSlug }),
-						})}
-			</section>
+								search,
+								orgSlug,
+								prompt: credentialCreateAgentPrompt({
+									kind: selected,
+									query,
+									pageUrl,
+								}),
+								keyForm: () =>
+									renderKeyForm({
+										state,
+										existing,
+										orgSlug,
+										packages,
+										linkProblem,
+									}),
+							})}
+				</section>
+			</AccountManagementShell>
 		)
 	}
+}
+
+function renderPackageAccess(input: {
+	state: KeyFormState
+	packages: AccountCredentialsResponse['packages']
+	update: (patch: Partial<KeyFormState>) => void
+}) {
+	const { state, packages, update } = input
+	const known = new Set(packages.map((entry) => entry.id))
+	const unknownLocks = state.allowedPackages.filter((id) => !known.has(id))
+	const toggleLock = (id: string, checked: boolean) =>
+		update({
+			allowedPackages: checked
+				? [...new Set([...state.allowedPackages, id])]
+				: state.allowedPackages.filter((entry) => entry !== id),
+		})
+	return (
+		<fieldset
+			data-testid="connect-credential-package-access"
+			mix={css({ ...fieldCss, border: 'none', margin: 0, padding: 0 })}
+		>
+			<legend mix={css(fieldLabelCss)}>Which packages can read it</legend>
+			<label mix={css(choiceRowCss)}>
+				<input
+					type="radio"
+					name="connect-credential-package-scope"
+					checked={state.packageScope === 'org'}
+					mix={on('change', () => update({ packageScope: 'org' }))}
+				/>
+				<span>
+					Packages in this org (lock it to some below, or leave it open)
+				</span>
+			</label>
+			<label mix={css(choiceRowCss)}>
+				<input
+					type="radio"
+					name="connect-credential-package-scope"
+					checked={state.packageScope === 'package'}
+					disabled={packages.length === 0}
+					mix={on('change', () => update({ packageScope: 'package' }))}
+				/>
+				<span>
+					One package only (a package key that no other package or agent code
+					reads)
+				</span>
+			</label>
+			{state.packageScope === 'package' ? (
+				<select
+					aria-label="Package that owns this key"
+					value={state.packageId}
+					mix={[
+						css(inputCss),
+						on('change', (event) =>
+							update({ packageId: event.currentTarget.value }),
+						),
+					]}
+				>
+					<option value="">Choose a package</option>
+					{packages.map((entry) => (
+						<option key={entry.id} value={entry.id}>
+							{entry.kodyId}
+						</option>
+					))}
+				</select>
+			) : packages.length > 0 || unknownLocks.length > 0 ? (
+				<div
+					role="group"
+					aria-label="Lock to packages"
+					mix={css({ display: 'grid', gap: spacing.xs })}
+				>
+					{packages.map((entry) => (
+						<label key={entry.id} mix={css(choiceRowCss)}>
+							<input
+								type="checkbox"
+								checked={state.allowedPackages.includes(entry.id)}
+								mix={on('change', (event) =>
+									toggleLock(entry.id, event.currentTarget.checked),
+								)}
+							/>
+							<span>
+								Lock to <code>{entry.kodyId}</code>
+							</span>
+						</label>
+					))}
+					{unknownLocks.map((id) => (
+						<label key={id} mix={css(choiceRowCss)}>
+							<input
+								type="checkbox"
+								checked
+								mix={on('change', (event) =>
+									toggleLock(id, event.currentTarget.checked),
+								)}
+							/>
+							<span>
+								Lock to package <code>{id}</code>{' '}
+								<span mix={css({ color: colors.textMuted })}>
+									(not found in this org)
+								</span>
+							</span>
+						</label>
+					))}
+					<span mix={css(mutedCss)}>
+						A locked key is readable only by the packages you check. With none
+						checked, any package in this org can use it.
+					</span>
+				</div>
+			) : null}
+		</fieldset>
+	)
 }
 
 function renderKindBody(input: {

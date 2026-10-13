@@ -1,4 +1,5 @@
 import { buildAccountSecretId } from '@kody-internal/shared/account-secret-route.ts'
+import { normalizeSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
 import {
 	type CredentialKind,
 	type CredentialListItem,
@@ -110,10 +111,14 @@ export function credentialCreateHandoffHref(input: {
 	}
 }
 
-/** The org Key the form would replace: same name, not package-scoped. */
+/**
+ * The org Key the form would replace: same name and, for a package Key, the
+ * same package (`packageId` null means not package-scoped).
+ */
 export function findExistingOrgKey(
 	credentials: ReadonlyArray<CredentialListItem>,
 	name: string,
+	packageId: string | null = null,
 ) {
 	const wanted = name.trim()
 	if (!wanted) return null
@@ -121,7 +126,7 @@ export function findExistingOrgKey(
 		credentials.find(
 			(credential) =>
 				credential.scope === 'org' &&
-				credential.packageId === null &&
+				credential.packageId === packageId &&
 				credential.name === wanted,
 		) ?? null
 	)
@@ -155,34 +160,107 @@ export function parseHostsInput(text: string) {
 	]
 }
 
+/** Who can read a Key: any package the locks allow, or one package only. */
+export type KeyPackageScope = 'org' | 'package'
+
 export type KeyFormState = {
 	name: string
 	value: string
 	description: string
 	provider: string
 	hosts: string
+	/** YYYY-MM-DD from the date field, or a link's full UTC timestamp. */
 	expiresAt: string
+	packageScope: KeyPackageScope
+	/** The package a package Key belongs to. */
+	packageId: string
+	/** Saved package ids an org Key is locked to; empty means any package. */
+	allowedPackages: Array<string>
 	/** Replace the existing org Key with this name instead of failing. */
 	replaceExisting: boolean
+}
+
+/** A link's `expiresAt` as canonical UTC ISO, null when absent, or 'invalid'. */
+export function readLinkExpiresAt(raw: string | null): string | null {
+	if (!raw) return null
+	try {
+		return normalizeSecretExpiresAt(raw) ?? null
+	} catch {
+		return 'invalid'
+	}
+}
+
+/** The date field's value for a stored expiry (date part of the timestamp). */
+export function expiresAtDateValue(expiresAt: string) {
+	const match = /^(\d{4}-\d{2}-\d{2})/.exec(expiresAt.trim())
+	return match?.[1] ?? ''
+}
+
+/** True when the expiry carries a time of day the date field cannot show. */
+export function expiresAtHasTime(expiresAt: string) {
+	const text = expiresAt.trim()
+	return text.length > 10 && !text.endsWith('T00:00:00.000Z')
 }
 
 export function createKeyFormState(
 	query: ParsedCredentialCreateQuery,
 ): KeyFormState {
+	const expiresAt = readLinkExpiresAt(query.expiresAt)
+	const packageKey =
+		query.packageScopedTo !== null || query.packageScopeMissingId
 	return {
 		name: query.name ?? '',
 		value: '',
 		description: query.description ?? '',
 		provider: query.provider ?? '',
 		hosts: query.allowedHosts.join('\n'),
-		expiresAt: '',
+		expiresAt: expiresAt === 'invalid' ? '' : (expiresAt ?? ''),
+		packageScope: packageKey ? 'package' : 'org',
+		packageId: query.packageScopedTo ?? '',
+		allowedPackages: packageKey ? [] : [...query.allowedPackages],
 		replaceExisting: false,
 	}
 }
 
 /**
+ * What is wrong with the link itself, so the form cannot save it as asked.
+ * Matches the legacy intake page: a bad expiry or a package Key for a
+ * package this org does not have.
+ */
+export function keyLinkProblem(input: {
+	query: ParsedCredentialCreateQuery
+	packages: ReadonlyArray<{ id: string }>
+}): string | null {
+	if (readLinkExpiresAt(input.query.expiresAt) === 'invalid') {
+		return 'This link has an invalid expiresAt value. Use a UTC timestamp or YYYY-MM-DD.'
+	}
+	if (input.query.packageScopeMissingId) {
+		return 'This link asks for a package key but names no package (packageId).'
+	}
+	const packageId = input.query.packageScopedTo
+	if (packageId && !input.packages.some((entry) => entry.id === packageId)) {
+		return 'This link names a package that is not in this org.'
+	}
+	return null
+}
+
+/** Why the form cannot save yet, before posting. */
+export function keyFormProblem(state: KeyFormState): string | null {
+	if (state.packageScope === 'package' && !state.packageId) {
+		return 'Choose the package this key belongs to.'
+	}
+	return null
+}
+
+/** The package a package Key belongs to, or null for an org Key. */
+export function keyFormPackageId(state: KeyFormState) {
+	return state.packageScope === 'package' ? state.packageId || null : null
+}
+
+/**
  * The `/account/secrets.json` save for the Key form. Replacing keeps the
- * existing Key's hosts and adds the form's.
+ * existing Key's hosts and package locks and adds the form's; an empty
+ * expiry keeps the existing one.
  */
 export function buildKeySaveBody(input: {
 	form: KeyFormState
@@ -191,21 +269,34 @@ export function buildKeySaveBody(input: {
 	const name = input.form.name.trim()
 	const replacing = input.form.replaceExisting && input.existing !== null
 	const hosts = parseHostsInput(input.form.hosts)
+	const packageId = keyFormPackageId(input.form)
+	const scope = packageId ? 'package' : 'user'
+	const allowedPackages = packageId
+		? []
+		: [
+				...new Set([
+					...(replacing ? (input.existing?.lockedToPackageIds ?? []) : []),
+					...input.form.allowedPackages,
+				]),
+			].sort((left, right) => left.localeCompare(right))
 	return {
 		action: 'save',
-		currentId: replacing ? buildAccountSecretId({ name, scope: 'user' }) : null,
+		currentId: replacing
+			? buildAccountSecretId({ name, scope, packageId })
+			: null,
 		name,
-		scope: 'user',
+		scope,
+		packageId,
 		value: input.form.value,
 		description: input.form.description.trim(),
 		provider: input.form.provider.trim() || null,
-		expiresAt: input.form.expiresAt.trim() || null,
+		expiresAt:
+			input.form.expiresAt.trim() ||
+			(replacing ? (input.existing?.expiresAt ?? null) : null),
 		allowedHosts: replacing
 			? [...new Set([...(input.existing?.hosts ?? []), ...hosts])]
 			: hosts,
-		allowedPackages: replacing
-			? (input.existing?.lockedToPackageIds ?? [])
-			: [],
+		allowedPackages,
 	}
 }
 

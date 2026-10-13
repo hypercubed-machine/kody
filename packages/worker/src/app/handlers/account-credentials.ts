@@ -7,7 +7,10 @@ import { jsonResponse } from '#worker/json-response.ts'
 import { readCredentialListFilters } from '#universal/credentials-list.ts'
 import { type routes } from '#universal/routes.ts'
 
-/** `/@slug/-/credentials`: every credential the org holds, in one list. */
+/**
+ * `/@slug/-/credentials`: every credential the org holds, in one list.
+ * `/@slug/-/credentials/new` is the creation one-pager for the same org.
+ */
 export function createAccountCredentialsHandler(env: Env) {
 	return {
 		middleware: [],
@@ -20,15 +23,16 @@ export function createAccountCredentialsHandler(env: Env) {
 		}) {
 			const user = await requireAuthenticatedPageUser(request, env)
 			if (user instanceof Response) return user
+			const creating = params.credentialId === 'new'
 			const accountCredentials = await loadAccountCredentialsData({
 				env,
 				user,
-				selectedId: params.credentialId ?? null,
+				selectedId: creating ? null : (params.credentialId ?? null),
 			})
 			return renderAppPage({
 				request,
 				env,
-				title: 'Credentials',
+				title: creating ? 'Add a credential' : 'Credentials',
 				loaderData: { accountCredentials },
 			})
 		},
