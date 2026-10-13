@@ -31,7 +31,12 @@ import {
 	resolveNeedCandidates,
 	type UsableCredential,
 } from './credential-candidates.ts'
+import {
+	type CredentialCallMap,
+	type CredentialPick,
+} from './credential-call-map.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
+import { type CredentialNeed } from './credential-needs.ts'
 import {
 	CredentialLoginFailedError,
 	CredentialNotFoundError,
@@ -50,6 +55,7 @@ export type CredentialClientErrorCode =
 	| 'credential_ambiguous'
 	| 'credential_not_found'
 	| 'credential_denied'
+	| 'credential_need_unknown'
 	| 'host_not_allowed'
 	| 'insecure_transport'
 	| 'invalid_request'
@@ -127,6 +133,14 @@ export type CredentialClientContext = {
 	binding: string
 	/** The package whose needs and sharing apply, or null for ad hoc code. */
 	packageId: string | null
+	/** The caller's picks for this run, by need key. */
+	callMap?: CredentialCallMap | null
+	/**
+	 * The run's pinned needs as `validateCredentialCallMap` sees them. When
+	 * set, a key missing here reads as a provider: a package's latest publish
+	 * never adds needs the run's entry closures did not pin.
+	 */
+	runNeeds?: () => Promise<ReadonlyMap<string, CredentialNeed>>
 	waitUntil?: (promise: Promise<unknown>) => void
 }
 
@@ -137,6 +151,17 @@ export type OpenedCredentialClient = {
 	scope: UsableCredential['scope']
 	kind: PackageCredentialKind
 	hosts: Array<string>
+	/** Set when an explicit pick has no provider and could resolve on its own. */
+	hint?: string
+}
+
+type Picked = { credential: UsableCredential; hint: string | null }
+
+/** What a need key asks for: the declared need, or the key read as a provider. */
+type NeedTarget = {
+	kind: PackageCredentialKind | null
+	provider: string
+	describe: string
 }
 
 const maxKeyLength = 100
@@ -163,7 +188,7 @@ function readText(value: unknown, field: string) {
 	return text
 }
 
-function readScope(value: unknown) {
+function readScope(value: unknown): CredentialPick['scope'] {
 	if (value == null) return null
 	if (value === 'org' || value === 'personal') return value
 	throw refusal('invalid_request', 'scope must be "org" or "personal".')
@@ -178,6 +203,13 @@ function toOption(credential: UsableCredential): CredentialClientOption {
 	}
 }
 
+/** `"work" (org), "work" (personal)`: names and scopes to pick from. */
+function describeOptions(credentials: ReadonlyArray<UsableCredential>) {
+	return credentials
+		.map((credential) => `"${credential.name}" (${credential.scope})`)
+		.join(', ')
+}
+
 function retryFor(key: string | null, credential: UsableCredential) {
 	const pick = { name: credential.name, scope: credential.scope }
 	return {
@@ -186,20 +218,46 @@ function retryFor(key: string | null, credential: UsableCredential) {
 	}
 }
 
-async function loadNeed(ctx: CredentialClientContext, key: string) {
-	if (!ctx.packageId) return null
-	const request = requireActorRequest(ctx)
-	const saved = await getSavedPackageById(ctx.env.APP_DB, {
-		userId: request.org.id,
-		packageId: ctx.packageId,
+async function loadPackageNeeds(input: {
+	env: Env
+	request: RequestContext
+	packageId: string
+}) {
+	const saved = await getSavedPackageById(input.env.APP_DB, {
+		userId: input.request.org.id,
+		packageId: input.packageId,
 	})
-	if (!saved) return null
-	const needs = await loadPublishedCredentialNeeds({
-		env: ctx.env,
+	if (!saved) return []
+	return await loadPublishedCredentialNeeds({
+		env: input.env,
 		userId: saved.userId,
 		sourceId: saved.sourceId,
 	})
+}
+
+async function loadNeed(ctx: CredentialClientContext, key: string) {
+	if (ctx.runNeeds) return (await ctx.runNeeds()).get(key) ?? null
+	if (!ctx.packageId) return null
+	const needs = await loadPackageNeeds({
+		env: ctx.env,
+		request: requireActorRequest(ctx),
+		packageId: ctx.packageId,
+	})
 	return needs.find((need) => need.key === key) ?? null
+}
+
+function needTarget(key: string, need: CredentialNeed | null): NeedTarget {
+	const kind = need?.kind ?? null
+	const provider = need?.provider ?? key
+	return {
+		kind,
+		provider,
+		describe: need
+			? kind
+				? `need "${key}" (${kind} from provider "${provider}")`
+				: `need "${key}" (any fetch-capable credential from provider "${provider}")`
+			: `provider "${provider}"`,
+	}
 }
 
 /**
@@ -240,7 +298,7 @@ function pickOne(input: {
 			'credential_unbound',
 			`No credential you can use matches ${input.describe}.${
 				input.possibleMatches.length > 0
-					? ' Some matching credentials have no provider; pick one by name, or set its provider with credentialUpdate so it resolves on its own.'
+					? ' Some of the same kind have no provider; pick one by name, or set its provider with credentialUpdate so it resolves on its own.'
 					: ''
 			}`,
 			{
@@ -253,7 +311,7 @@ function pickOne(input: {
 	}
 	throw refusal(
 		'credential_ambiguous',
-		`More than one credential you can use matches ${input.describe}. Pick one by name and scope.`,
+		`More than one credential you can use matches ${input.describe}: ${describeOptions(input.candidates)}. Pick one by name and scope.`,
 		{
 			retryWith: input.candidates.map((candidate) =>
 				retryFor(input.key, candidate),
@@ -263,59 +321,119 @@ function pickOne(input: {
 	)
 }
 
-export async function openCredentialClient(
+function findByName(
+	usable: ReadonlyArray<UsableCredential>,
+	pick: CredentialPick,
+	key: string | null,
+) {
+	const matches = usable.filter(
+		(credential) =>
+			credential.name === pick.name &&
+			(!pick.scope || credential.scope === pick.scope),
+	)
+	if (matches.length === 0) {
+		throw refusal(
+			'credential_not_found',
+			`No credential named "${pick.name}" that you can use${pick.scope ? ` in ${pick.scope} scope` : ''}.`,
+		)
+	}
+	return pickOne({
+		key,
+		candidates: matches,
+		possibleMatches: [],
+		describe: `the name "${pick.name}"`,
+	})
+}
+
+/**
+ * An explicit call-map pick (resolution rule 2): the kind must match, and the
+ * provider must match when both sides have one.
+ */
+function pickExplicit(input: {
+	key: string
+	pick: CredentialPick
+	usable: ReadonlyArray<UsableCredential>
+	target: NeedTarget
+}): Picked {
+	const credential = findByName(input.usable, input.pick, input.key)
+	const { kind, provider } = input.target
+	if (kind && credential.kind !== kind) {
+		throw refusal(
+			'invalid_request',
+			`credentials.${input.key} picks "${credential.name}", a ${credential.kind} credential; this need takes a ${kind} credential.`,
+		)
+	}
+	if (credential.provider && credential.provider !== provider) {
+		throw refusal(
+			'invalid_request',
+			`credentials.${input.key} picks "${credential.name}", whose provider is "${credential.provider}"; this need takes provider "${provider}".`,
+		)
+	}
+	return {
+		credential,
+		hint: credential.provider
+			? null
+			: `"${credential.name}" has no provider. Set its provider to "${provider}" with credentialUpdate so it resolves without a pick.`,
+	}
+}
+
+async function resolveKey(
 	ctx: CredentialClientContext,
-	input: { key?: unknown; name?: unknown; scope?: unknown },
+	key: string,
+	usable: ReadonlyArray<UsableCredential>,
+	mode: 'one' | 'many',
+): Promise<Array<Picked>> {
+	const need = await loadNeed(ctx, key)
+	const target = needTarget(key, need)
+	const picks = ctx.callMap?.get(key)
+	if (!picks) {
+		const resolution = need
+			? resolveNeedCandidates(need, usable)
+			: {
+					candidates: usable.filter(
+						(candidate) => candidate.provider === target.provider,
+					),
+					possibleMatches: [] as Array<UsableCredential>,
+				}
+		const credential = pickOne({
+			key,
+			candidates: resolution.candidates,
+			possibleMatches: resolution.possibleMatches,
+			describe: target.describe,
+		})
+		return [{ credential, hint: null }]
+	}
+	if (mode === 'one' && picks.length === 0) {
+		throw refusal(
+			'credential_unbound',
+			`The credentials map picks no credential for "${key}".`,
+		)
+	}
+	const picked = new Map<string, Picked>()
+	for (const pick of picks) {
+		const one = pickExplicit({ key, pick, usable, target })
+		picked.set(one.credential.id, one)
+	}
+	const all = [...picked.values()].map((one) => one.credential)
+	if (mode === 'one' && all.length > 1) {
+		throw refusal(
+			'invalid_request',
+			`The credentials map picks ${all.length} credentials for "${key}": ${describeOptions(all)}. Pick one of them for credential("${key}"), or call credentials("${key}") to get all of them.`,
+			{
+				retryWith: all.map((credential) => retryFor(key, credential)),
+				options: all.map(toOption),
+			},
+		)
+	}
+	return [...picked.values()]
+}
+
+async function issueClient(
+	ctx: CredentialClientContext,
+	key: string | null,
+	{ credential: picked, hint }: Picked,
 ): Promise<OpenedCredentialClient> {
 	const request = requireActorRequest(ctx)
-	const named = input.name != null
-	const key = named ? null : readText(input.key, 'A credential key')
-	const usable = await listUsableCredentials({ env: ctx.env, request })
-	let picked: UsableCredential
-	if (named) {
-		await assertNamedAllowed(ctx)
-		const name = readText(input.name, 'A credential name')
-		const scope = readScope(input.scope)
-		const matches = usable.filter(
-			(credential) =>
-				credential.name === name && (!scope || credential.scope === scope),
-		)
-		if (matches.length === 0) {
-			throw refusal(
-				'credential_not_found',
-				`No credential named "${name}" that you can use${scope ? ` in ${scope} scope` : ''}.`,
-			)
-		}
-		picked = pickOne({
-			key: null,
-			candidates: matches,
-			possibleMatches: [],
-			describe: `the name "${name}"`,
-		})
-	} else {
-		const need = await loadNeed(ctx, key!)
-		if (need) {
-			const resolution = resolveNeedCandidates(need, usable)
-			picked = pickOne({
-				key,
-				candidates: resolution.candidates,
-				possibleMatches: resolution.possibleMatches,
-				describe: need.kind
-					? `need "${key}" (${need.kind} from provider "${need.provider}")`
-					: `need "${key}" (any fetch-capable credential from provider "${need.provider}")`,
-			})
-		} else {
-			const provider = key!
-			picked = pickOne({
-				key,
-				candidates: usable.filter(
-					(credential) => credential.provider === provider,
-				),
-				possibleMatches: [],
-				describe: `provider "${provider}"`,
-			})
-		}
-	}
 	if (picked.kind === 'mcp' && picked.scope === 'personal') {
 		throw refusal(
 			'credential_denied',
@@ -341,7 +459,122 @@ export async function openCredentialClient(
 		scope: picked.scope,
 		kind: picked.kind,
 		hosts: picked.hosts,
+		...(hint ? { hint } : {}),
 	}
+}
+
+export async function openCredentialClient(
+	ctx: CredentialClientContext,
+	input: { key?: unknown; name?: unknown; scope?: unknown },
+): Promise<OpenedCredentialClient> {
+	const request = requireActorRequest(ctx)
+	const usable = await listUsableCredentials({ env: ctx.env, request })
+	if (input.name != null) {
+		await assertNamedAllowed(ctx)
+		const pick = {
+			name: readText(input.name, 'A credential name'),
+			scope: readScope(input.scope),
+		}
+		return await issueClient(ctx, null, {
+			credential: findByName(usable, pick, null),
+			hint: null,
+		})
+	}
+	const key = readText(input.key, 'A credential key')
+	const [picked] = await resolveKey(ctx, key, usable, 'one')
+	return await issueClient(ctx, key, picked!)
+}
+
+/**
+ * `credentials(key)`: every pick the call map gives for the key, or the one
+ * candidate when it gives none (a `multiple` need never gets "all of them").
+ */
+export async function openCredentialClients(
+	ctx: CredentialClientContext,
+	input: { key?: unknown },
+): Promise<Array<OpenedCredentialClient>> {
+	const request = requireActorRequest(ctx)
+	const key = readText(input.key, 'A credential key')
+	const usable = await listUsableCredentials({ env: ctx.env, request })
+	const picked = await resolveKey(ctx, key, usable, 'many')
+	return await Promise.all(picked.map((one) => issueClient(ctx, key, one)))
+}
+
+/**
+ * Every need the run's entry packages declare, by key, first entry wins.
+ * Pass entries only (see `credentialNeedsEntryPackageIds`): an entry's
+ * closure pins its static dependencies' needs, so a dependency's later
+ * publish never adds or replaces them.
+ */
+export async function loadRunCredentialNeeds(input: {
+	env: Env
+	request: RequestContext
+	packageIds: ReadonlyArray<string>
+}): Promise<ReadonlyMap<string, CredentialNeed>> {
+	const needLists = await Promise.all(
+		input.packageIds.map((packageId) =>
+			loadPackageNeeds({ env: input.env, request: input.request, packageId }),
+		),
+	)
+	const needs = new Map<string, CredentialNeed>()
+	for (const need of needLists.flat()) {
+		if (!needs.has(need.key)) needs.set(need.key, need)
+	}
+	return needs
+}
+
+/**
+ * Validates a call map before code runs (resolution rule 4). Every pick must
+ * resolve. A key no package in the run declares is an error when `strict`
+ * (an invoke) and a warning otherwise (ad hoc code reads it as a provider).
+ */
+export async function validateCredentialCallMap(input: {
+	env: Env
+	request: RequestContext | null
+	map: CredentialCallMap
+	packageIds: ReadonlyArray<string>
+	strict: boolean
+}): Promise<{ warnings: Array<string> }> {
+	return await withClientErrors(async () => {
+		const request = input.request
+		if (!request?.actor) {
+			throw refusal(
+				'credential_denied',
+				'A credentials map needs a person. This run has no acting person.',
+			)
+		}
+		const [usable, needs] = await Promise.all([
+			listUsableCredentials({ env: input.env, request }),
+			loadRunCredentialNeeds({
+				env: input.env,
+				request,
+				packageIds: input.packageIds,
+			}),
+		])
+		const warnings: Array<string> = []
+		for (const [key, picks] of input.map) {
+			const need = needs.get(key) ?? null
+			if (!need) {
+				const declared = [...needs.keys()]
+				const message = `credentials.${key} is not a need ${
+					input.packageIds.length > 0
+						? 'any package in this run declares'
+						: 'of this code'
+				}${declared.length > 0 ? ` (declared: ${declared.join(', ')})` : ''}.`
+				if (input.strict) {
+					throw refusal('credential_need_unknown', message)
+				}
+				warnings.push(
+					`${message} It applies only to credential("${key}") calls, which read "${key}" as a provider.`,
+				)
+			}
+			const target = needTarget(key, need)
+			for (const pick of picks) {
+				pickExplicit({ key, pick, usable, target })
+			}
+		}
+		return { warnings }
+	})
 }
 
 async function readHandle(
