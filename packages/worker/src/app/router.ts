@@ -302,6 +302,7 @@ import {
 	createAccountOrganizationsNewHandler,
 	createAccountOrganizationsNewPostHandler,
 } from '#app/handlers/account-organizations.ts'
+import { createLegacyOrgConnectionsRedirectHandler } from '#app/handlers/legacy-org-connections-redirect.ts'
 import {
 	createLegacyOrgPackagesApiRedirectHandler,
 	createLegacyOrgPackagesRedirectHandler,
@@ -634,12 +635,13 @@ export function createAppRouter(env: Env) {
 			communityFeatureApiPost: createCommunityFeatureApiPostHandler(env),
 			communityInstallApiPost: createCommunityInstallApiPostHandler(env),
 			orgActivity: createOrgSectionHandler(env, 'activity'),
+			orgAgents: createOrgSectionHandler(env, 'agents'),
 			orgBilling: createOrgBillingHandler(env),
 			orgBillingApi: createOrgBillingApiHandler(env),
 			orgBillingCheckoutPost: createOrgBillingCheckoutApiHandler(env),
 			orgBillingSuccess: createOrgBillingSuccessHandler(env),
 			orgBillingPortal: createOrgBillingPortalHandler(env),
-			orgConnections: createOrgSectionHandler(env, 'connections'),
+			orgConnections: createLegacyOrgConnectionsRedirectHandler(env),
 			orgEmail: createOrgSectionHandler(env, 'email'),
 			orgIntegrations: createOrgSectionHandler(env, 'integrations'),
 			orgJobs: createOrgSectionHandler(env, 'jobs'),
