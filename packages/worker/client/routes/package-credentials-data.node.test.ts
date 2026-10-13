@@ -135,10 +135,35 @@ test('viewers outside the package org get not found', async () => {
 	})
 	expect(await loadPackageCredentialsPage(href, signal)).toEqual(notFound)
 
-	stubFetch({ detail: json(detail), view: json({ ok: false }, 404) })
-	expect(await loadPackageCredentialsPage(href, signal)).toEqual(notFound)
-
 	expect(
 		await loadPackageCredentialsPage('/@jane/-/credentials', signal),
 	).toEqual(notFound)
+})
+
+test('readers without run access keep the chrome and learn why', async () => {
+	stubFetch({ detail: json(detail), view: json({ ok: false }, 404) })
+	const result = await loadPackageCredentialsPage(href, signal)
+	expect(result.kind === 'data' && result.data.ok && result.data).toMatchObject(
+		{ view: null, viewError: expect.stringContaining('not run it') },
+	)
+})
+
+test('a credentials network failure keeps the chrome', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input).endsWith('/credentials.json')) {
+				throw new TypeError('Failed to fetch')
+			}
+			return json(detail)
+		}),
+	)
+	const result = await loadPackageCredentialsPage(href, signal)
+	expect(result.kind === 'data' && result.data.ok && result.data).toMatchObject(
+		{
+			shell: { name: 'daily-digest' },
+			view: null,
+			viewError: expect.stringContaining('could not reach the server'),
+		},
+	)
 })

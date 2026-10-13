@@ -92,6 +92,10 @@ test('placeholders cover Keys and OAuth only, with the package scope when it has
 			null,
 		)
 	}
+	// Placeholders resolve in the bound org, so a granted personal one has none.
+	expect(
+		credentialPlaceholder(item({ id: 'e', name: 'MINE', scope: 'personal' })),
+	).toBe(null)
 	// A name the placeholder grammar cannot spell has no placeholder.
 	expect(credentialPlaceholder(item({ id: 'd', name: 'work github' }))).toBe(
 		null,
@@ -172,6 +176,13 @@ test('usage reports how each package need relates to the credential', async () =
 			(use) => `${use.kodyId}:${use.needKey}:${use.fit}`,
 		),
 	).toEqual(['digest:llm:possible', 'triage:openai:possible'])
+	expect(
+		(await detail(item({ id: 'openai-1', name: 'OPENAI' }))).usageUnreadable,
+	).toBe(1)
+	// A package key belongs to its package; it fills no declared need.
+	expect(
+		await detail(item({ id: 'openai-1', name: 'OPENAI', packageId: 'triage' })),
+	).toMatchObject({ usage: [], usageTruncated: false, usageUnreadable: 0 })
 })
 
 test('usage checks a bounded number of packages and says so', async () => {

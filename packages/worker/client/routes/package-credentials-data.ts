@@ -24,8 +24,8 @@ function loginRedirect(href: string) {
 
 /**
  * The package detail (for the tab chrome) and the package credentials view,
- * fetched together. A viewer who cannot run the package gets not found, as
- * the API answers. A credentials API failure keeps the chrome and reports
+ * fetched together. A viewer who cannot open the package gets not found. A
+ * credentials failure (including no run access) keeps the chrome and reports
  * the error so the tab can offer a prompt for the person's agent.
  */
 export async function loadPackageCredentialsPage(
@@ -42,9 +42,12 @@ export async function loadPackageCredentialsPage(
 		fetch(routes.communityPackageCredentialsApi.href(params), {
 			...init,
 			credentials: 'include',
+		}).catch((error: unknown) => {
+			if (signal.aborted) throw error
+			return null
 		}),
 	])
-	if (detailResponse.status === 401 || viewResponse.status === 401) {
+	if (detailResponse.status === 401 || viewResponse?.status === 401) {
 		return {
 			kind: 'redirect',
 			to: loginRedirect(`${url.pathname}${url.search}`),
@@ -62,17 +65,16 @@ export async function loadPackageCredentialsPage(
 		throw new Error('Unable to load this package.')
 	}
 	const ownerPackage = detail.ownerPackage
-	if (!ownerPackage || !detail.viewerIsOwner || viewResponse.status === 404) {
+	if (!ownerPackage || !detail.viewerIsOwner) {
 		return { kind: 'data', data: { ok: false, notFound: true } }
 	}
-	const viewPayload = await readJson<
-		PackageCredentialsView | { ok: false; error?: string }
-	>(viewResponse)
-	const view = viewResponse.ok && viewPayload?.ok ? viewPayload : null
-	const viewError = view
-		? null
-		: (viewPayload && !viewPayload.ok ? viewPayload.error : null) ||
-			`Kody could not load this package’s credentials (HTTP ${viewResponse.status}).`
+	const viewPayload = viewResponse
+		? await readJson<PackageCredentialsView | { ok: false; error?: string }>(
+				viewResponse,
+			)
+		: null
+	const view = viewResponse?.ok && viewPayload?.ok ? viewPayload : null
+	const viewError = view ? null : describeViewFailure(viewResponse, viewPayload)
 	return {
 		kind: 'data',
 		data: {
@@ -94,6 +96,22 @@ export async function loadPackageCredentialsPage(
 			viewError,
 		},
 	}
+}
+
+function describeViewFailure(
+	response: Response | null,
+	payload: PackageCredentialsView | { ok: false; error?: string } | null,
+) {
+	if (!response) {
+		return 'Kody could not reach the server to load this package’s credentials. Check your connection and reload.'
+	}
+	if (response.status === 404) {
+		return 'You can read this package but not run it, so it has no credentials, mappings, or triggers for you. Ask an org owner for run access.'
+	}
+	return (
+		(payload && !payload.ok ? payload.error : null) ||
+		`Kody could not load this package’s credentials (HTTP ${response.status}).`
+	)
 }
 
 export async function packageCredentialsRouteLoader(

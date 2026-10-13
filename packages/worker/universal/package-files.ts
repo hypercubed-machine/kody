@@ -154,6 +154,9 @@ const packageRepoChromeMatchers = [
 	createMatcher(routes.communityPackageSettings.pattern),
 	createMatcher(routes.communityPackageTree.pattern),
 	createMatcher(routes.communityPackageFiles.pattern),
+	createMatcher(routes.communityPackageCredentials.pattern),
+	createMatcher(routes.communityPackageMappings.pattern),
+	createMatcher(routes.communityPackageTriggers.pattern),
 ] as const
 
 /**
