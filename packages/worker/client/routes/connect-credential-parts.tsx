@@ -135,9 +135,12 @@ export function renderKindList(input: {
 export function renderPackageAccess(input: {
 	state: KeyFormState
 	packages: AccountCredentialsResponse['packages']
+	/** Only a Key can belong to one package; other kinds can only be locked. */
+	packageKeys: boolean
 	update: (patch: Partial<KeyFormState>) => void
 }) {
-	const { state, packages, update } = input
+	const { state, packages, packageKeys, update } = input
+	const packageScoped = packageKeys && state.packageScope === 'package'
 	const known = new Set(packages.map((entry) => entry.id))
 	const unknownLocks = state.allowedPackages.filter((id) => !known.has(id))
 	const toggleLock = (id: string, checked: boolean) =>
@@ -152,31 +155,35 @@ export function renderPackageAccess(input: {
 			mix={css({ ...fieldCss, border: 'none', margin: 0, padding: 0 })}
 		>
 			<legend mix={css(fieldLabelCss)}>Which packages can read it</legend>
-			<label mix={css(choiceRowCss)}>
-				<input
-					type="radio"
-					name="connect-credential-package-scope"
-					checked={state.packageScope === 'org'}
-					mix={on('change', () => update({ packageScope: 'org' }))}
-				/>
-				<span>
-					Packages in this org (lock it to some below, or leave it open)
-				</span>
-			</label>
-			<label mix={css(choiceRowCss)}>
-				<input
-					type="radio"
-					name="connect-credential-package-scope"
-					checked={state.packageScope === 'package'}
-					disabled={packages.length === 0}
-					mix={on('change', () => update({ packageScope: 'package' }))}
-				/>
-				<span>
-					One package only (a package key that no other package or agent code
-					reads)
-				</span>
-			</label>
-			{state.packageScope === 'package' ? (
+			{packageKeys ? (
+				<>
+					<label mix={css(choiceRowCss)}>
+						<input
+							type="radio"
+							name="connect-credential-package-scope"
+							checked={!packageScoped}
+							mix={on('change', () => update({ packageScope: 'org' }))}
+						/>
+						<span>
+							Packages in this org (lock it to some below, or leave it open)
+						</span>
+					</label>
+					<label mix={css(choiceRowCss)}>
+						<input
+							type="radio"
+							name="connect-credential-package-scope"
+							checked={packageScoped}
+							disabled={packages.length === 0}
+							mix={on('change', () => update({ packageScope: 'package' }))}
+						/>
+						<span>
+							One package only (a package key that no other package or agent
+							code reads)
+						</span>
+					</label>
+				</>
+			) : null}
+			{packageScoped ? (
 				<select
 					aria-label="Package that owns this key"
 					value={state.packageId}
