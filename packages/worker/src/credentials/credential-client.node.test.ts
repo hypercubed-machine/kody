@@ -432,14 +432,14 @@ test('a declared need picks by its kind and provider, and offers same-kind crede
 	).resolves.toMatchObject({ key: 'MAIL', name: 'resend-prod' })
 })
 
-test('unbound and not-found errors always carry a creation link, locking a declared kind', async () => {
+test('unbound and not-found errors always carry a creation link for the bound org, locking a declared kind', async () => {
 	const t = await setup()
 	const bea = t.requestAs('bea', 'owner')
 	const adHoc = await rejection(
 		openCredentialClient(t.contextFor({ request: bea }), { key: 'resend' }),
 	)
 	const adHocUrl =
-		'https://example.com/connect/credential?kind=secret&name=resend&provider=resend'
+		'https://example.com/@acme-clients/-/credentials/new?kind=secret&name=resend&provider=resend'
 	expect(adHoc.body).toMatchObject({
 		code: 'credential_unbound',
 		createUrl: adHocUrl,
@@ -465,7 +465,7 @@ test('unbound and not-found errors always carry a creation link, locking a decla
 	const declaredUrl = new URL(
 		(declared.body as { createUrl: string }).createUrl,
 	)
-	expect(declaredUrl.pathname).toBe('/connect/credential')
+	expect(declaredUrl.pathname).toBe('/@acme-clients/-/credentials/new')
 	expect(Object.fromEntries(declaredUrl.searchParams)).toEqual({
 		kind: 'oauth',
 		kindMode: 'required',
@@ -481,7 +481,8 @@ test('unbound and not-found errors always carry a creation link, locking a decla
 	)
 	expect(named.body).toMatchObject({
 		code: 'credential_not_found',
-		createUrl: 'https://example.com/connect/credential?name=missing',
+		createUrl:
+			'https://example.com/@acme-clients/-/credentials/new?name=missing',
 	})
 })
 
@@ -772,7 +773,7 @@ test('stored mappings pick the credential: trigger override, then your default, 
 	const none = await rejection(open(bea))
 	expect(none.body).toMatchObject({
 		code: 'credential_unbound',
-		createUrl: expect.stringContaining('/connect/credential?'),
+		createUrl: expect.stringContaining('/@acme-clients/-/credentials/new?'),
 	})
 	expect(none.message).toContain('mapped to no credential on purpose')
 
@@ -804,7 +805,7 @@ test('stored mappings pick the credential: trigger override, then your default, 
 	const unusable = await rejection(open(annTrigger))
 	expect(unusable.body).toMatchObject({
 		code: 'credential_not_found',
-		createUrl: expect.stringContaining('/connect/credential?'),
+		createUrl: expect.stringContaining('/@acme-clients/-/credentials/new?'),
 	})
 	await expect(open(ann)).resolves.toMatchObject({ name: 'resend-a' })
 	await map(trigger, [keyA])

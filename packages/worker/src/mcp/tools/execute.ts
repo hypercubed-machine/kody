@@ -367,7 +367,9 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 					const error =
 						cause instanceof Error ? cause : new Error(String(cause))
 					const { errorName, errorMessage } = errorFields(error)
-					const errorDetails = getExecutionErrorDetails(error)
+					const errorDetails = getExecutionErrorDetails(error, {
+						orgSlug: callerContext.request?.org.slug,
+					})
 					logMcpEvent({
 						category: 'mcp',
 						tool: 'execute',
@@ -668,7 +670,9 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 						: (claimedRunHandle?.id ?? undefined)
 
 				if (result.error) {
-					const errorDetails = getExecutionErrorDetails(result.error)
+					const errorDetails = getExecutionErrorDetails(result.error, {
+						orgSlug: callerContext.request?.org.slug,
+					})
 					const { errorName, errorMessage } = errorFields(result.error)
 					logMcpEvent({
 						category: 'mcp',
