@@ -175,7 +175,11 @@ function packageScopeOption(
 	return 'any'
 }
 
-/** Package-scope choice as filters; a chosen package (`locked: id`) stays. */
+/**
+ * Package-scope choice as filters. A chosen package (`locked: id`) stays,
+ * except for package-scoped keys, which belong to a package instead of being
+ * locked to one.
+ */
 function packageScopeFilters(
 	option: PackageScopeOption,
 	current: CredentialListFilters,
@@ -186,7 +190,7 @@ function packageScopeFilters(
 		case 'any':
 			return { ...current, packageScoped: undefined, locked: lockedPackage }
 		case 'scoped':
-			return { ...current, packageScoped: true, locked: lockedPackage }
+			return { ...current, packageScoped: true, locked: undefined }
 		case 'unscoped':
 			return { ...current, packageScoped: false, locked: lockedPackage }
 		case 'locked':
@@ -249,7 +253,7 @@ export function AccountCredentialsRoute(handle: Handle) {
 		const packages = payload?.packages ?? []
 		const packagesById = new Map(packages.map((pkg) => [pkg.id, pkg]))
 		const filters = readCredentialListFiltersFromHref(currentHref)
-		const shown = filterCredentialList(credentials, filters)
+		const filtered = filterCredentialList(credentials, filters)
 		const orgSlug = payload?.orgSlug ?? ''
 		const teamOrg = payload?.teamOrg ?? false
 		const selection = credentialsRoute.getSelection(currentHref)
@@ -261,6 +265,11 @@ export function AccountCredentialsRoute(handle: Handle) {
 				? payload.selected
 				: null
 		const personalOrgSlug = payload?.personalOrgSlug ?? null
+		// The open row stays visible so its pane can render under any filter.
+		const shown =
+			selectedItem && !filtered.includes(selectedItem)
+				? [selectedItem, ...filtered]
+				: filtered
 		const selectedMissing =
 			selection.selectedId !== null &&
 			status === 'ready' &&
@@ -350,7 +359,9 @@ export function AccountCredentialsRoute(handle: Handle) {
 						status !== 'ready'
 							? 'Loading credentials…'
 							: credentials.length === 0
-								? 'No credentials yet. Add a key, connect an OAuth service, or add an MCP server to get started.'
+								? shownProviders.length > 0
+									? 'No keys, OAuth connections, or MCP servers yet. Your custom secret providers are listed below.'
+									: 'No credentials yet. Add a key, connect an OAuth service, or add an MCP server to get started.'
 								: 'No credentials match the current filters.'
 					}
 					toolbar={

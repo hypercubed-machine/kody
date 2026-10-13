@@ -90,6 +90,8 @@ export type AccountCredentialDetail = {
 	}>
 	/** True when only the first packages were checked for `usage`. */
 	usageTruncated: boolean
+	/** Checked packages whose published needs could not be read. */
+	usageUnreadable: number
 }
 
 /** The contract response plus what the website page needs to render it. */
@@ -142,11 +144,23 @@ export function writeCredentialListQuery(
 	if (filters.locked !== undefined) params.set('locked', String(filters.locked))
 }
 
+/** Every whitespace-separated term appears in some field. */
 function matchesQuery(item: CredentialListItem, query: string) {
-	const needle = query.toLowerCase()
-	return [item.name, item.provider ?? '', item.description, ...item.hosts].some(
-		(field) => field.toLowerCase().includes(needle),
-	)
+	const haystack = [
+		item.name,
+		item.provider ?? '',
+		item.description,
+		item.packageId ?? '',
+		...item.hosts,
+		...item.lockedToPackageIds,
+	]
+		.join(' ')
+		.toLowerCase()
+	return query
+		.toLowerCase()
+		.split(/\s+/)
+		.filter(Boolean)
+		.every((term) => haystack.includes(term))
 }
 
 /** Applies the list filters; the page filters live with the same rules. */

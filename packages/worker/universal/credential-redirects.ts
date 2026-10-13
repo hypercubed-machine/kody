@@ -24,15 +24,31 @@ function withSearch(path: string, search: URLSearchParams) {
 }
 
 /**
- * The Secrets list filtered with `scope=user|package` (and `package=<id>`);
- * the Credentials list calls that `packageScoped` and has its own `scope`.
+ * Secrets index links the Credentials list cannot serve: an approval request
+ * (names with hosts or a package to grant) and a list narrowed to one
+ * package's keys. Those keep the legacy page.
+ */
+const secretsIndexOnlyParams = [
+	'hosts',
+	'allowed-host',
+	'package_id',
+	'capability',
+	'package',
+]
+
+/**
+ * The Secrets list filtered with `scope=user|package`; the Credentials list
+ * calls that `packageScoped`. `user` meant the org's own keys, so a team org
+ * leaves out personal keys granted to it.
  */
 function translateSecretsListFilters(search: URLSearchParams) {
 	const scope = search.get('scope')
 	search.delete('scope')
-	search.delete('package')
 	if (scope === 'package') search.set('packageScoped', 'true')
-	if (scope === 'user') search.set('packageScoped', 'false')
+	if (scope === 'user') {
+		search.set('scope', 'org')
+		search.set('packageScoped', 'false')
+	}
 }
 
 function orgIndexRedirect(url: URL): string | null {
@@ -42,6 +58,12 @@ function orgIndexRedirect(url: URL): string | null {
 	if (!section || !Object.hasOwn(orgIndexRedirects, section)) return null
 	// The MCP OAuth callback lands here with its result for the page banner.
 	if (section === 'mcp-servers' && url.searchParams.has('auth')) return null
+	if (
+		section === 'secrets' &&
+		secretsIndexOnlyParams.some((name) => url.searchParams.has(name))
+	) {
+		return null
+	}
 	const search = new URLSearchParams(url.searchParams)
 	search.set('kind', orgIndexRedirects[section]!)
 	if (section === 'secrets') translateSecretsListFilters(search)

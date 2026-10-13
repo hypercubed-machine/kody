@@ -182,7 +182,7 @@ test('package settings Files tab uses the listing default branch and id', async 
 	)
 })
 
-test('package credential tabs 404 outside the package org and keep the tab on a move', async () => {
+test('package credential tabs 404 outside the package org or on plain repos and keep the tab on a move', async () => {
 	const handler = createCommunityPackageCredentialsHandler(
 		{} as Env,
 		'mappings',
@@ -199,6 +199,7 @@ test('package credential tabs 404 outside the package org and keep the tab on a 
 		kodyId: 'digest',
 		listing: null,
 		ownerPackage: { id: 'pkg-1', name: 'digest', isPrivate: true },
+		hasPackage: true,
 		viewerIsOwner: false,
 		viewerCanManage: false,
 		loggedIn: true,
@@ -207,6 +208,13 @@ test('package credential tabs 404 outside the package org and keep the tab on a 
 
 	mockModule.renderAppPage.mockClear()
 	mockModule.loadPackagePage.mockResolvedValue(page)
+	expect((await requestTab()).status).toBe(404)
+
+	mockModule.loadPackagePage.mockResolvedValue({
+		...page,
+		viewerIsOwner: true,
+		hasPackage: false,
+	})
 	expect((await requestTab()).status).toBe(404)
 
 	mockModule.renderAppPage.mockClear()
@@ -230,7 +238,7 @@ test('package credential tabs 404 outside the package org and keep the tab on a 
 	)
 })
 
-test('the credential approval page needs a session, an org member, and keeps the proposal across a move', async () => {
+test('the credential approval page needs a session, leaves access to the approval API, and keeps the proposal across a move', async () => {
 	const handler = createCommunityPackageCredentialApprovalHandler({} as Env)
 	const pageUrl =
 		'https://example.com/@kentcdodds/digest/approve-credentials?default%5Bgithub%5D=bot'
@@ -252,20 +260,29 @@ test('the credential approval page needs a session, an org member, and keeps the
 		kodyId: 'digest',
 		listing: null,
 		ownerPackage: { id: 'pkg-1', name: 'digest', isPrivate: true },
+		hasPackage: true,
 		viewerIsOwner: false,
 		viewerCanManage: false,
 		loggedIn: true,
 		invocationUrlOrigin: 'https://example.com',
 	}
-	mockModule.loadPackagePage.mockResolvedValue(page)
+	mockModule.loadPackagePage.mockResolvedValue({ ...page, hasPackage: false })
 	expect((await requestPage()).status).toBe(404)
 
-	mockModule.renderAppPage.mockClear()
-	mockModule.loadPackagePage.mockResolvedValue({ ...page, viewerIsOwner: true })
-	expect((await requestPage()).status).toBe(200)
-	expect(mockModule.renderAppPage).toHaveBeenCalledWith(
-		expect.objectContaining({ title: 'Approve credential mappings' }),
-	)
+	// The approval API decides access (package:execute), so execute-only
+	// members, who cannot open the package page, still get the page shell.
+	for (const access of [
+		page,
+		{ ...page, viewerIsOwner: true },
+		{ kind: 'not_found' },
+	]) {
+		mockModule.renderAppPage.mockClear()
+		mockModule.loadPackagePage.mockResolvedValue(access)
+		expect((await requestPage()).status).toBe(200)
+		expect(mockModule.renderAppPage).toHaveBeenCalledWith(
+			expect.objectContaining({ title: 'Approve credential mappings' }),
+		)
+	}
 
 	mockModule.loadPackagePage.mockResolvedValue({
 		kind: 'redirect',

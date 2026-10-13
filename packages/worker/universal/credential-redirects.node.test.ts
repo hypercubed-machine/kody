@@ -14,11 +14,11 @@ test('old org index pages go to the Credentials list filtered by kind', () => {
 	expect(redirect('/@acme/-/mcp-servers?url=https%3A%2F%2Fmcp.test')).toBe(
 		'/@acme/-/credentials?url=https%3A%2F%2Fmcp.test&kind=mcp',
 	)
-	expect(redirect('/@acme/-/secrets?scope=package&package=pkg-1&q=x')).toBe(
+	expect(redirect('/@acme/-/secrets?scope=package&q=x')).toBe(
 		'/@acme/-/credentials?q=x&kind=secret&packageScoped=true',
 	)
 	expect(redirect('/@acme/-/secrets?scope=user')).toBe(
-		'/@acme/-/credentials?kind=secret&packageScoped=false',
+		'/@acme/-/credentials?kind=secret&scope=org&packageScoped=false',
 	)
 	expect(redirect('/@acme/-/secrets?kind=oauth&q=x')).toBe(
 		'/@acme/-/credentials?kind=secret&q=x',
@@ -36,6 +36,10 @@ test('deeper flows, /connect/oauth, Secret providers, and other sections keep se
 		'/@acme/-/mcp-servers?auth=error&reason=denied',
 		'/@acme/-/secrets/approve',
 		'/@acme/-/secrets/approve?token=t',
+		'/@acme/-/secrets?names=STRIPE_KEY&hosts=api.stripe.com',
+		'/@acme/-/secrets?name=STRIPE_KEY&allowed-host=api.stripe.com',
+		'/@acme/-/secrets?names=A,B&package_id=pkg-1',
+		'/@acme/-/secrets?scope=package&package=pkg-1',
 		'/@acme/-/mcp-servers/srv-1/authorize',
 		'/@acme/-/integrations/github',
 		'/account/mcp-servers/oauth/callback',
