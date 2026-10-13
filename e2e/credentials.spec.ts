@@ -34,6 +34,12 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	const table = page.getByRole('region', { name: 'Credentials', exact: true })
 	const row = table.getByRole('link', { name: /DEMO_API_KEY/ })
 	await expect(row).toBeVisible()
+	await expect(
+		page.getByRole('link', { name: 'Add credential' }),
+	).toHaveAttribute('href', `/@${user.username}/-/credentials/new`)
+	await expect(
+		page.getByRole('link', { name: 'Secret providers' }),
+	).toHaveAttribute('href', `/@${user.username}/-/secret-providers`)
 
 	await page
 		.getByRole('combobox', { name: 'Filter credentials by kind' })
@@ -108,6 +114,12 @@ test('the creation link saves Key, URL, and login credentials from their prefill
 		'/connect/credential?kind=secret&kindMode=required&name=DIGEST_KEY&provider=resend&allowedHosts=api.resend.com&forPackage=pr-digest&need=email',
 	)
 	await waitForClientHydration(page)
+	// The org-less link opens the signup org's creation page, query intact.
+	await expect(page).toHaveURL(
+		new RegExp(
+			`/@${user.username}/-/credentials/new\\?kind=secret&kindMode=required&name=DIGEST_KEY&`,
+		),
+	)
 	await expect(page.getByRole('heading', { name: 'Add a key' })).toBeVisible()
 	await expect(
 		page.getByText('This link asks for a Key credential.'),
@@ -138,7 +150,9 @@ test('the creation link saves Key, URL, and login credentials from their prefill
 	await waitForClientHydration(page)
 	await page.getByTestId('credential-kind-oauth').click()
 	await expect(page).toHaveURL(
-		/\/connect\/credential\?kind=oauth&provider=github$/,
+		new RegExp(
+			`/@${user.username}/-/credentials/new\\?kind=oauth&provider=github$`,
+		),
 	)
 	await expect(page.getByTestId('connect-credential-continue')).toHaveAttribute(
 		'href',
@@ -197,4 +211,48 @@ test('the creation link saves Key, URL, and login credentials from their prefill
 	await expect(page.getByTestId('connect-credential-saved')).toContainText(
 		'SITE_LOGIN is saved',
 	)
+})
+
+test('the legacy secret intake link opens the Key form with its prefill', async ({
+	page,
+	seedE2eUser,
+	login,
+}) => {
+	test.setTimeout(process.env.CI ? 90_000 : 60_000)
+	const runId = Date.now()
+	const user = await seedE2eUser({
+		email: `secret-set-${runId}@example.com`,
+		username: `secret-set-${runId}`,
+		password: 'secret-set-password',
+	})
+	await login({ email: user.email, password: user.password, mode: 'login' })
+
+	await page.goto(
+		'/connect/secret-set?name=STRIPE_KEY&description=Billing&allowed-host=api.stripe.com&package=pkg-gone&expiresAt=2030-01-31',
+	)
+	await waitForClientHydration(page)
+	await expect(page).toHaveURL(
+		new RegExp(
+			`/@${user.username}/-/credentials/new\\?kind=secret&name=STRIPE_KEY&`,
+		),
+	)
+	await expect(page.getByRole('heading', { name: 'Add a key' })).toBeVisible()
+	await expect(page.getByLabel('Name')).toHaveValue('STRIPE_KEY')
+	await expect(page.getByLabel(/^Description/)).toHaveValue('Billing')
+	await expect(page.getByLabel(/Allowed hosts/)).toHaveValue('api.stripe.com')
+	await expect(page.getByLabel(/^Expires/)).toHaveValue('2030-01-31')
+	const access = page.getByTestId('connect-credential-package-access')
+	await expect(access).toContainText('pkg-gone')
+	await expect(access).toContainText('(not found in this org)')
+	await expect(access.getByRole('checkbox')).toBeChecked()
+
+	// A package key for a package this org does not have cannot be saved.
+	await page.goto(
+		'/connect/secret-set?name=STRIPE_KEY&scope=package&packageId=pkg-gone',
+	)
+	await waitForClientHydration(page)
+	await expect(page.getByTestId('connect-credential-link-problem')).toHaveText(
+		'This link names a package that is not in this org.',
+	)
+	await expect(page.getByTestId('connect-credential-save')).toBeDisabled()
 })
