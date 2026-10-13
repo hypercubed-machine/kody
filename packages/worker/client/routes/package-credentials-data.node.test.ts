@@ -117,14 +117,16 @@ test('signed-out viewers go to login and come back to the tab', async () => {
 })
 
 test('a moved package redirects to the same tab at its new path', async () => {
-	stubFetch({
-		detail: json({ ok: false, redirectTo: '/@acme/daily-digest' }, 404),
-		view: json({ ok: false }, 404),
-	})
-	expect(await loadPackageCredentialsPage(href, signal)).toEqual({
-		kind: 'redirect',
-		to: '/@acme/daily-digest/mappings',
-	})
+	for (const viewStatus of [404, 401]) {
+		stubFetch({
+			detail: json({ ok: false, redirectTo: '/@acme/daily-digest' }, 404),
+			view: json({ ok: false }, viewStatus),
+		})
+		expect(await loadPackageCredentialsPage(href, signal)).toEqual({
+			kind: 'redirect',
+			to: '/@acme/daily-digest/mappings',
+		})
+	}
 })
 
 test('viewers outside the package org get not found', async () => {

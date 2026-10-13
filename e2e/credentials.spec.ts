@@ -121,7 +121,9 @@ test('the creation link saves Key, URL, and login credentials from their prefill
 	await waitForClientHydration(page)
 	await page.getByTestId('credential-kind-oauth').click()
 	await expect(page).toHaveURL(
-		/\/connect\/credential\?kind=oauth&provider=github$/,
+		new RegExp(
+			`/@${user.username}/-/credentials/new\\?kind=oauth&provider=github$`,
+		),
 	)
 	await expect(page.getByTestId('connect-credential-continue')).toHaveAttribute(
 		'href',
