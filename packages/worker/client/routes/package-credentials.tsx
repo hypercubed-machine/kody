@@ -10,6 +10,7 @@ import {
 } from '#client/route-data.tsx'
 import { readRouterPathname } from '#client/router-location.tsx'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
+import { type PackageCredentialsView } from '#universal/credential-contracts.ts'
 import {
 	type PackageCredentialsLoaderData,
 	type PackageCredentialsTab,
@@ -28,6 +29,7 @@ import {
 	renderShellStatus,
 } from './community-detail-sections.tsx'
 import { loadPackageCredentialsPage } from './package-credentials-data.ts'
+import { createPackageMappingEditor } from './package-credentials-editor.tsx'
 import {
 	type PackageTabContext,
 	renderCredentialsTab,
@@ -98,6 +100,19 @@ export function PackageCredentialsRoute(handle: Handle) {
 		},
 	})
 
+	let page = { username: '', kodyId: '', orgSlug: '' }
+	let baseView: PackageCredentialsView | null = null
+	let saved: {
+		base: PackageCredentialsView
+		view: PackageCredentialsView
+	} | null = null
+	const editor = createPackageMappingEditor(handle, {
+		readPage: () => page,
+		onSaved(view) {
+			if (baseView) saved = { base: baseView, view }
+		},
+	})
+
 	return () => {
 		const currentHref = readCurrentRouterHref(handle)
 		const pathname = readRouterPathname(handle)
@@ -115,6 +130,15 @@ export function PackageCredentialsRoute(handle: Handle) {
 		const shell = data?.shell ?? null
 		const username = shell?.username ?? path.username
 		const kodyId = shell?.kodyId ?? path.kodyId
+		page = { username, kodyId, orgSlug: username }
+		if (data?.view !== baseView) {
+			baseView = data?.view ?? null
+			editor.reset()
+		}
+		const view =
+			data?.view && saved?.base === data.view
+				? saved.view
+				: (data?.view ?? null)
 		const pending = snapshot.kind === 'pending'
 		const statusMessage =
 			snapshot.kind === 'error'
@@ -160,12 +184,13 @@ export function PackageCredentialsRoute(handle: Handle) {
 					iconName: kodyId,
 				})}
 				{renderShellStatus(statusMessage)}
-				{data?.view
+				{view
 					? renderTab(path.tab, {
 							orgSlug: username,
 							username,
 							kodyId,
-							view: data.view,
+							view,
+							renderMappingCell: editor.renderCell,
 						})
 					: null}
 				{data && !data.view

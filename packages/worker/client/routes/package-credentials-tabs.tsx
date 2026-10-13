@@ -1,5 +1,11 @@
 import { type RemixNode, css } from 'remix/component'
 import {
+	canEditTrigger,
+	triggerMappingRows,
+	triggerWillEnable,
+} from '#client/routes/package-credentials-editing.ts'
+import {
+	type CredentialMappingTarget,
 	type CredentialRef,
 	type EffectiveCredentialMapping,
 	type PackageCredentialNeedView,
@@ -36,11 +42,32 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 
+/** One stored mapping a person may edit: a default layer or a trigger override. */
+export type MappingCellInput = {
+	target: CredentialMappingTarget
+	need: PackageCredentialNeedView
+	stored: StoredCredentialMapping | null
+	inheritLabel: string
+	editable: boolean
+	trigger: PackageTriggerView | null
+}
+
 export type PackageTabContext = {
 	orgSlug: string
 	username: string
 	kodyId: string
 	view: PackageCredentialsView
+	/** Renders an editable cell; without it, cells are read-only. */
+	renderMappingCell?: (input: MappingCellInput) => RemixNode
+}
+
+function renderMappingCell(
+	context: PackageTabContext,
+	input: MappingCellInput,
+) {
+	return context.renderMappingCell
+		? context.renderMappingCell(input)
+		: renderStored(context.orgSlug, input.stored, input.inheritLabel)
 }
 
 const mutedCss = { margin: 0, color: colors.textMuted }
@@ -155,7 +182,7 @@ function renderEffective(orgSlug: string, mapping: EffectiveCredentialMapping) {
 	}
 }
 
-function renderStored(
+export function renderStored(
 	orgSlug: string,
 	stored: StoredCredentialMapping | null,
 	inheritLabel: string,
@@ -397,17 +424,27 @@ export function renderMappingsTab(context: PackageTabContext): RemixNode {
 						<div mix={css(insetCardCss)}>
 							<dt mix={css(sectionTitleCss)}>Org default</dt>
 							<dd mix={css({ margin: 0 })}>
-								{renderStored(orgSlug, need.defaults.org, 'Not set')}
+								{renderMappingCell(context, {
+									target: { type: 'default', layer: 'org' },
+									need,
+									stored: need.defaults.org,
+									inheritLabel: 'Not set',
+									editable: view.package.canManage,
+									trigger: null,
+								})}
 							</dd>
 						</div>
 						<div mix={css(insetCardCss)}>
 							<dt mix={css(sectionTitleCss)}>Your default</dt>
 							<dd mix={css({ margin: 0 })}>
-								{renderStored(
-									orgSlug,
-									need.defaults.mine,
-									'Not set (uses the org default)',
-								)}
+								{renderMappingCell(context, {
+									target: { type: 'default', layer: 'mine' },
+									need,
+									stored: need.defaults.mine,
+									inheritLabel: 'Not set (uses the org default)',
+									editable: true,
+									trigger: null,
+								})}
 							</dd>
 						</div>
 						<div mix={css(insetCardCss)}>
@@ -448,7 +485,16 @@ function renderTriggerMappings(
 			</p>
 		)
 	}
-	if (trigger.mappings.length === 0) {
+	const editable = Boolean(context.renderMappingCell) && canEditTrigger(trigger)
+	const rows = editable
+		? triggerMappingRows(context.view, trigger)
+		: trigger.mappings.flatMap((mapping) => {
+				const need = context.view.needs.find(
+					(candidate) => candidate.key === mapping.needKey,
+				)
+				return need ? [{ need, mapping }] : []
+			})
+	if (rows.length === 0) {
 		return (
 			<p mix={css(mutedCss)}>
 				Runs of this trigger use the package’s default mappings.
@@ -456,35 +502,54 @@ function renderTriggerMappings(
 		)
 	}
 	return (
-		<div mix={css({ overflowX: 'auto' })}>
-			<table mix={css(tableCss)}>
-				<thead>
-					<tr>
-						<th scope="col">Need</th>
-						<th scope="col">This trigger</th>
-						<th scope="col">Runs use</th>
-						<th scope="col">Status</th>
-					</tr>
-				</thead>
-				<tbody>
-					{trigger.mappings.map((mapping) => (
-						<tr key={mapping.needKey}>
-							<td>
-								<strong>{mapping.needKey}</strong>
-							</td>
-							<td>
-								{renderStored(
-									context.orgSlug,
-									mapping.override,
-									'Inherits your default',
-								)}
-							</td>
-							<td>{renderEffective(context.orgSlug, mapping.effective)}</td>
-							<td>{renderStatus(mapping.effective)}</td>
+		<div mix={css({ display: 'grid', gap: spacing.sm })}>
+			{editable && triggerWillEnable(trigger) ? (
+				<p
+					data-testid="package-trigger-will-enable"
+					mix={css({ margin: 0, color: colors.warningText })}
+				>
+					This trigger is off. Saving a mapping here turns it on for you.
+				</p>
+			) : null}
+			<div mix={css({ overflowX: 'auto' })}>
+				<table mix={css(tableCss)}>
+					<thead>
+						<tr>
+							<th scope="col">Need</th>
+							<th scope="col">This trigger</th>
+							<th scope="col">Runs use</th>
+							<th scope="col">Status</th>
 						</tr>
-					))}
-				</tbody>
-			</table>
+					</thead>
+					<tbody>
+						{rows.map(({ need, mapping }) => (
+							<tr key={need.key}>
+								<td>
+									<strong>{need.key}</strong>
+								</td>
+								<td>
+									{renderMappingCell(context, {
+										target: { type: 'trigger', trigger: trigger.trigger },
+										need,
+										stored: mapping?.override ?? null,
+										inheritLabel: 'Inherits your default',
+										editable,
+										trigger,
+									})}
+								</td>
+								<td>
+									{mapping ? (
+										renderEffective(context.orgSlug, mapping.effective)
+									) : (
+										<span mix={css(mutedCss)}>Your default, once on</span>
+									)}
+								</td>
+								<td>{mapping ? renderStatus(mapping.effective) : null}</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
 		</div>
 	)
 }
