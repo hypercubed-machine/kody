@@ -80,7 +80,10 @@ export function createPackageMappingEditor(
 	handle: Handle,
 	options: {
 		readPage: () => { username: string; kodyId: string; orgSlug: string }
-		onSaved: (view: PackageCredentialsView) => void
+		onSaved: (
+			view: PackageCredentialsView,
+			postedTo: { username: string; kodyId: string },
+		) => void
 	},
 ) {
 	let open: OpenEditor | null = null
@@ -121,7 +124,7 @@ export function createPackageMappingEditor(
 			kodyId: page.kodyId,
 			changes: [planned.change],
 		})
-		if (result.kind === 'saved') options.onSaved(result.view)
+		if (result.kind === 'saved') options.onSaved(result.view, page)
 		// The editor was closed or replaced (a tab change resets it) while
 		// the write was in flight; its outcome belongs to that old form.
 		if (session !== started) return
