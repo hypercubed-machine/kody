@@ -217,6 +217,8 @@ test('files hrefs use the default-branch fallback and avoid reserved kody ids', 
 			'/@kentcdodds/grok-bot/mappings',
 			'/@kentcdodds/grok-bot/triggers',
 			'/@kentcdodds',
+			'/@kentcdodds/-/credentials',
+			'/@kentcdodds/-/settings',
 		].map(getPackageRepoChromeKey),
 	).toEqual([
 		'kentcdodds/grok-bot',
@@ -225,6 +227,8 @@ test('files hrefs use the default-branch fallback and avoid reserved kody ids', 
 		'kentcdodds/grok-bot',
 		'kentcdodds/grok-bot',
 		'kentcdodds/grok-bot',
+		null,
+		null,
 		null,
 	])
 	expect(

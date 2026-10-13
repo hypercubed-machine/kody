@@ -38,6 +38,8 @@ test('deeper flows, /connect/oauth, Secret providers, and other sections keep se
 		'/@acme/-/secrets/approve?token=t',
 		'/@acme/-/secrets?names=STRIPE_KEY&hosts=api.stripe.com',
 		'/@acme/-/secrets?name=STRIPE_KEY&allowed-host=api.stripe.com',
+		'/@acme/-/secrets?name=STRIPE_KEY&host=api.stripe.com',
+		'/@acme/-/secrets?name=STRIPE_KEY&allowedHosts=api.stripe.com',
 		'/@acme/-/secrets?names=A,B&package_id=pkg-1',
 		'/@acme/-/secrets?scope=package&package=pkg-1',
 		'/@acme/-/mcp-servers/srv-1/authorize',
