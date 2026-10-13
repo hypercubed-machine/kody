@@ -2,17 +2,18 @@
  * Old credential URLs and where they now live (contract: "Redirects"). Only
  * index pages move; approval and OAuth flows under them keep serving, and
  * `/connect/oauth` never moves because it is a registered OAuth redirect URI.
+ * Secret providers keep their page: it is where package access to a vault is
+ * granted and revoked, and the Credentials list links to it.
  */
 import {
 	credentialCreatePath,
 	type CredentialKind,
 } from './credential-contracts.ts'
 
-const orgIndexRedirects: Record<string, CredentialKind | null> = {
+const orgIndexRedirects: Record<string, CredentialKind> = {
 	secrets: 'secret',
 	integrations: 'oauth',
 	'mcp-servers': 'mcp',
-	'secret-providers': null,
 }
 
 const orgIndexPattern = /^\/@([^/]+)\/-\/([^/]+)\/?$/
@@ -22,14 +23,28 @@ function withSearch(path: string, search: URLSearchParams) {
 	return query ? `${path}?${query}` : path
 }
 
+/**
+ * The Secrets list filtered with `scope=user|package` (and `package=<id>`);
+ * the Credentials list calls that `packageScoped` and has its own `scope`.
+ */
+function translateSecretsListFilters(search: URLSearchParams) {
+	const scope = search.get('scope')
+	search.delete('scope')
+	search.delete('package')
+	if (scope === 'package') search.set('packageScoped', 'true')
+	if (scope === 'user') search.set('packageScoped', 'false')
+}
+
 function orgIndexRedirect(url: URL): string | null {
 	const match = orgIndexPattern.exec(url.pathname)
 	if (!match) return null
 	const [, orgSegment, section] = match
 	if (!section || !Object.hasOwn(orgIndexRedirects, section)) return null
-	const kind = orgIndexRedirects[section]
+	// The MCP OAuth callback lands here with its result for the page banner.
+	if (section === 'mcp-servers' && url.searchParams.has('auth')) return null
 	const search = new URLSearchParams(url.searchParams)
-	if (kind) search.set('kind', kind)
+	search.set('kind', orgIndexRedirects[section]!)
+	if (section === 'secrets') translateSecretsListFilters(search)
 	return withSearch(`/@${orgSegment}/-/credentials`, search)
 }
 

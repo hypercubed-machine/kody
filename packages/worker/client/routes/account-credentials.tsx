@@ -28,6 +28,7 @@ import {
 import {
 	type CredentialListFilters,
 	type CredentialListItem,
+	credentialCreatePath,
 	credentialKinds,
 	isCredentialKind,
 } from '#universal/credential-contracts.ts'
@@ -258,7 +259,18 @@ export function AccountCredentialsRoute(handle: Handle) {
 					description="Keys, OAuth connections, MCP servers, and every other way Kody reaches a service for you. Kody places each value at the network boundary; values never appear here."
 					currentHref={currentHref}
 					actions={
-						orgSlug ? (
+						// The one-pager saves into the signup org, so team orgs keep
+						// their org-pinned creation pages.
+						orgSlug && !teamOrg ? (
+							<div mix={headerActionsCss}>
+								<a
+									href={credentialCreatePath}
+									mix={css(getPillButtonCss({ size: 'sm' }))}
+								>
+									Add credential
+								</a>
+							</div>
+						) : orgSlug ? (
 							<div mix={headerActionsCss}>
 								<a
 									href={orgResourcePath(orgSlug, 'secrets', 'new')}

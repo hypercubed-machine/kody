@@ -1,4 +1,5 @@
 import { createRouter } from 'remix/router'
+import { withCredentialIndexRedirect } from '#app/handlers/credential-index-redirect.ts'
 import {
 	createAdminHandler,
 	createAdminUsersApiHandler,
@@ -656,9 +657,13 @@ export function createAppRouter(env: Env) {
 			orgConnections: createOrgSectionHandler(env, 'connections'),
 			orgCredentials: createOrgSectionHandler(env, 'credentials'),
 			orgEmail: createOrgSectionHandler(env, 'email'),
-			orgIntegrations: createOrgSectionHandler(env, 'integrations'),
+			orgIntegrations: withCredentialIndexRedirect(
+				createOrgSectionHandler(env, 'integrations'),
+			),
 			orgJobs: createOrgSectionHandler(env, 'jobs'),
-			orgMcpServers: createOrgSectionHandler(env, 'mcp-servers'),
+			orgMcpServers: withCredentialIndexRedirect(
+				createOrgSectionHandler(env, 'mcp-servers'),
+			),
 			orgMcpServerAuthorize: createOrgMcpServerAuthorizeHandler(env),
 			orgMcpServerAuthorizePost: createOrgMcpServerAuthorizePostHandler(env),
 			orgMemories: createOrgSectionHandler(env, 'memories'),
@@ -668,7 +673,9 @@ export function createAppRouter(env: Env) {
 			orgPackages: createLegacyOrgPackagesRedirectHandler(env),
 			orgPackagesApi: createLegacyOrgPackagesApiRedirectHandler(env),
 			orgSecretProviders: createOrgSectionHandler(env, 'secret-providers'),
-			orgSecrets: createOrgSectionHandler(env, 'secrets'),
+			orgSecrets: withCredentialIndexRedirect(
+				createOrgSectionHandler(env, 'secrets'),
+			),
 			orgValues: createOrgSectionHandler(env, 'values'),
 			orgWaiting: createOrgSectionHandler(env, 'waiting'),
 			orgWebhooks: createOrgSectionHandler(env, 'webhooks'),
