@@ -242,6 +242,8 @@ export type KeyFormState = {
 	/** Login field values by field name; only the `login` kind reads them. */
 	loginFields: Record<string, string>
 	loginExchange: LoginExchangeForm
+	/** Whether the login exchange disclosure is open; only a toggle changes it. */
+	loginExchangeOpen: boolean
 }
 
 /** A link's `expiresAt` as canonical UTC ISO, null when absent, or 'invalid'. */
@@ -272,6 +274,7 @@ export function createKeyFormState(
 	const expiresAt = readLinkExpiresAt(query.expiresAt)
 	const packageKey =
 		query.packageScopedTo !== null || query.packageScopeMissingId
+	const loginExchange = readLoginExchangeParam(query.passthrough)
 	return {
 		name: query.name ?? '',
 		value: '',
@@ -284,7 +287,8 @@ export function createKeyFormState(
 		allowedPackages: packageKey ? [] : [...query.allowedPackages],
 		replaceExisting: false,
 		loginFields: {},
-		loginExchange: readLoginExchangeParam(query.passthrough),
+		loginExchange,
+		loginExchangeOpen: !loginExchange.url || !loginExchange.tokenPath,
 	}
 }
 
