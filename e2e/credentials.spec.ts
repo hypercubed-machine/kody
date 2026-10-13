@@ -66,16 +66,27 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	)
 	await expect(pane).toHaveCount(0)
 
-	// The pages Credentials folds together keep serving.
-	for (const section of [
-		'secrets',
-		'integrations',
-		'mcp-servers',
-		'secret-providers',
-	]) {
+	// The indexes Credentials folds together redirect to it, filtered.
+	for (const [section, landing] of [
+		['secrets', '/credentials?kind=secret'],
+		['integrations', '/credentials?kind=oauth'],
+		['mcp-servers', '/credentials?kind=mcp'],
+		['secret-providers', '/secret-providers'],
+	] as const) {
 		const response = await page.goto(`/@${user.username}/-/${section}`)
 		expect(response?.status(), section).toBe(200)
+		expect(page.url(), section).toMatch(
+			new RegExp(`/@${user.username}/-${landing.replace('?', '\\?')}$`),
+		)
 	}
+
+	await page.goto(`/@${user.username}/-/credentials/does-not-exist`)
+	await waitForClientHydration(page)
+	await expect(
+		page
+			.getByTestId('credentials-error')
+			.getByRole('button', { name: 'Copy prompt for your agent' }),
+	).toBeVisible()
 })
 
 test('the creation link saves Key, URL, and login credentials from their prefill', async ({
