@@ -30,7 +30,9 @@ function withSearch(path: string, search: URLSearchParams) {
  */
 const secretsIndexOnlyParams = [
 	'hosts',
+	'host',
 	'allowed-host',
+	'allowedHosts',
 	'package_id',
 	'capability',
 	'package',
