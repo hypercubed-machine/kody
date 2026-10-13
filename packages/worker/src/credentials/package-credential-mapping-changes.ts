@@ -235,7 +235,7 @@ export async function resolveMappingChanges(
 			needKey: change.needKey,
 			need: need
 				? {
-						kind: need.kind,
+						kind: need.kind ?? null,
 						provider: need.provider,
 						description: need.description,
 						multiple: need.multiple,
