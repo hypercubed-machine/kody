@@ -32,10 +32,10 @@ removed.
 
 ### Behavior
 
-| Token                                         | Org on each request                              | Leaving an org                                         |
-| --------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------ |
-| `org_binding: "org"` (`tokenCreate` default)  | Fixed `org_id` on the token row. Ignore `?org=`. | Org-bound tokens for that org are revoked on leave.    |
-| `org_binding: "user"` (CLI bootstrap default) | `?org=<slug-or-id>`; omit → personal org.        | Token stays; membership/grant checks deny immediately. |
+| Token                                    | Org on each request                              | Leaving an org                                                  |
+| ---------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------- |
+| `org_binding: "org"` (legacy / explicit) | Fixed `org_id` on the token row. Ignore `?org=`. | Org-bound tokens for that org are revoked on leave (unchanged). |
+| `org_binding: "user"` (new CLI default)  | `?org=<slug-or-id>`; omit → personal org.        | Token stays; membership/grant checks deny immediately.          |
 
 The same `kody_at_…` token covers Open API, CapabilityProxy / local execute, and
 git HTTPS. Scopes still narrow every call. Revoke with `tokenRevoke` /
@@ -51,15 +51,20 @@ request.
 - **Errors:** inaccessible or unknown `org` → `401 unauthorized` with a message
   that names `?org=`.
 - **Git HTTPS:** there is no `?org=` on the git URL. Authz uses the **resource
-  owner's** org (membership or live grant) plus the token's scopes.
+  owner's** org (membership or live grant) plus the token's scopes. One
+  user-owned token therefore covers every `@owner/name.git` the person can
+  access across all orgs — not only the org chosen at `kody login --org`.
 
 ### Minting
 
-- **`cliCredentialBootstrap` / redeem:** mints `org_binding: "user"`. Redeem
-  honors the binding stamped on the code.
+- **New `cliCredentialBootstrap` / redeem:** mints `org_binding: "user"` by
+  default. Outstanding bootstrap codes created before this change still redeem
+  as `org` (additive; no forced cutover).
 - **`tokenCreate`:** defaults to `org` (current request org). Pass
   `"org_binding": "user"` for a person-owned token. An org-bound parent token
   cannot mint a user-owned child.
+
+Existing org-bound tokens keep working unchanged.
 
 ## Persistent git credentials (credential helper)
 
@@ -89,7 +94,7 @@ git config --global credential.https://kody.codes.useHttpPath true
 
 ## Authenticated git HTTP
 
-Canonical URL:
+Canonical URL (unchanged shape — do not break existing remotes):
 
 ```text
 https://kody.codes/@owner/name.git
@@ -97,7 +102,7 @@ https://kody.codes/@owner/name.git
 
 | Client                                                         | Behavior                                                                    |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Anonymous + public listed package                              | Published snapshot, read-only upload-pack                                   |
+| Anonymous + public listed package                              | Unchanged: published snapshot, read-only upload-pack                        |
 | Anonymous + private / missing                                  | `401` + `WWW-Authenticate: Basic realm="kody-git"` (so git asks the helper) |
 | Anonymous push                                                 | `401` (challenge)                                                           |
 | Basic/Bearer `kody_at_…` with `package:read` + can read target | Live HEAD upload-pack for that package or plain repo                        |
@@ -113,8 +118,8 @@ that owner.
 
 ### Push semantics
 
-- **Plain repos:** push updates live HEAD (same as Artifacts write remotes from
-  `repoGetGitRemote`).
+- **Plain repos:** push updates live HEAD (same as today's Artifacts write
+  remotes).
 - **Packages:** push moves live HEAD only. It does **not** auto-publish; publish
   stays an explicit package action.
 - Access default: mint an Artifacts **write** token when the caller can write,
