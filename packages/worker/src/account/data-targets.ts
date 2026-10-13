@@ -447,6 +447,20 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		table: 'enablements',
 		columns: ['enabler_user_id'],
 	},
+	// Their own default mappings and trigger overrides go with them; an org
+	// default they last edited survives with the editor anonymized.
+	{
+		kind: 'user_columns',
+		table: 'credential_mappings',
+		columns: ['person_user_id'],
+	},
+	{
+		kind: 'replace_user_column',
+		table: 'credential_mappings',
+		matchColumn: 'updated_by_user_id',
+		setColumn: 'updated_by_user_id',
+		value: 'deleted-user',
+	},
 	{ kind: 'user_id', table: 'webhook_apply_destination_pending' },
 	{ kind: 'user_id', table: 'webhook_apply_destination_grants' },
 	{
@@ -974,7 +988,9 @@ export const accountExportRedactedColumnsByTable: Readonly<
 		'url_secret_hash',
 		'url_secret_encrypted',
 		'hmac_secret_encrypted',
+		'hmac_verification_secret_encrypted',
 		'previous_url_secret_hash',
+		'previous_hmac_secret_encrypted',
 	],
 	webhook_apply_destination_pending: ['destination_json'],
 	webhook_apply_destination_grants: ['destination_json'],

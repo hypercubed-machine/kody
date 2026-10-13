@@ -194,6 +194,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['DELETE', '/v1/secrets/{scope}/{name}', 'secretDelete'],
 		['GET', '/v1/credentials', 'credentialList'],
 		['PATCH', '/v1/credentials/{credential_id}', 'credentialUpdate'],
+		['POST', '/v1/credential-proposals', 'credentialMappingPropose'],
 		['GET', '/v1/secret-providers', 'secretProviderList'],
 		['PUT', '/v1/secret-providers/{provider}', 'secretProviderBind'],
 		['DELETE', '/v1/secret-providers/{provider}', 'secretProviderUnbind'],
