@@ -22,6 +22,7 @@ import {
 	mappingSaveAgentPrompt,
 	postPackageCredentialChanges,
 	toggleDraftPick,
+	triggerDraftProblem,
 	triggerWillEnable,
 } from './package-credentials-editing.ts'
 import {
@@ -92,6 +93,11 @@ export function createPackageMappingEditor(
 
 	async function save(input: MappingCellInput) {
 		if (!open || open.saving) return
+		const unchanged = triggerDraftProblem(input.trigger, open.draft)
+		if (unchanged) {
+			update({ messages: [{ text: unchanged }] })
+			return
+		}
 		const planned = draftToChange({
 			target: input.target,
 			need: input.need,
@@ -238,9 +244,19 @@ export function createPackageMappingEditor(
 					{radio('none', 'None on purpose (runs get no credential)')}
 					{radio('inherit', input.inheritLabel)}
 				</fieldset>
-				{input.trigger && triggerWillEnable(input.trigger) ? (
+				{input.trigger && triggerWillEnable(input.trigger, draft) ? (
 					<p mix={css({ margin: 0, color: colors.warningText })}>
 						Saving turns this trigger on for you.
+					</p>
+				) : null}
+				{input.stored && input.stored.unusableIds.length > 0 ? (
+					<p
+						mix={css({ margin: 0, color: colors.warningText })}
+						data-testid="package-mapping-drops-unusable"
+					>
+						{input.stored.unusableIds.length === 1
+							? 'Saving replaces this mapping and drops the credential you can no longer use.'
+							: `Saving replaces this mapping and drops the ${input.stored.unusableIds.length} credentials you can no longer use.`}
 					</p>
 				) : null}
 				{renderMessages(input, state)}

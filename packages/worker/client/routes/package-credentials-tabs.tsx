@@ -2,7 +2,6 @@ import { type RemixNode, css } from 'remix/component'
 import {
 	canEditTrigger,
 	triggerMappingRows,
-	triggerWillEnable,
 } from '#client/routes/package-credentials-editing.ts'
 import {
 	type CredentialMappingTarget,
@@ -506,12 +505,13 @@ function renderTriggerMappings(
 	}
 	return (
 		<div mix={css({ display: 'grid', gap: spacing.sm })}>
-			{editable && triggerWillEnable(trigger) ? (
+			{editable && trigger.canEdit && trigger.enablement === null ? (
 				<p
 					data-testid="package-trigger-will-enable"
 					mix={css({ margin: 0, color: colors.warningText })}
 				>
-					This trigger is off. Saving a mapping here turns it on for you.
+					This trigger is off. Saving a credential choice here turns it on for
+					you.
 				</p>
 			) : null}
 			<div mix={css({ overflowX: 'auto' })}>
