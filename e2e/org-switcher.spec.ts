@@ -201,7 +201,7 @@ test('org switcher opens under its trigger, lists orgs, and closes like a menu',
 	)
 })
 
-test('switching orgs from Secrets loads the destination org, not the one you left', async ({
+test('switching orgs from Credentials loads the destination org, not the one you left', async ({
 	page,
 	seedE2eUser,
 	login,
@@ -238,7 +238,7 @@ test('switching orgs from Secrets loads the destination org, not the one you lef
 	await page.getByRole('button', { name: 'Yes, create organization' }).click()
 	await expect(page).toHaveURL(new RegExp(`/@switch-${runId}$`))
 
-	await page.goto(`/@${user.username}/-/secrets`)
+	await page.goto(`/@${user.username}/-/credentials`)
 	await waitForClientHydration(page)
 	await expect(page.getByText('personalOnlySecret')).toBeVisible()
 
@@ -246,20 +246,20 @@ test('switching orgs from Secrets loads the destination org, not the one you lef
 	// name the team page itself or the server binds the personal org.
 	const teamLoad = page.waitForRequest(
 		(request) =>
-			new URL(request.url()).pathname === '/account/secrets.json' &&
+			new URL(request.url()).pathname === '/account/credentials.json' &&
 			request.method() === 'GET',
 	)
 	const { panel } = await openSwitcher(page)
 	await panel.getByTestId(`org-switcher-switch-${runId}`).click()
-	await expect(page).toHaveURL(new RegExp(`/@switch-${runId}/-/secrets$`))
+	await expect(page).toHaveURL(new RegExp(`/@switch-${runId}/-/credentials$`))
 	expect((await teamLoad).headers()['referer']).toMatch(
-		new RegExp(`/@switch-${runId}/-/secrets$`),
+		new RegExp(`/@switch-${runId}/-/credentials$`),
 	)
 	await expect(
-		page.getByRole('heading', { level: 1, name: 'Secrets' }),
+		page.getByRole('heading', { level: 1, name: 'Credentials' }),
 	).toBeVisible()
 	await expect(
-		page.getByText('No secrets yet.', { exact: false }),
+		page.getByText('No credentials yet.', { exact: false }),
 	).toBeVisible()
 	await expect(page.getByText('personalOnlySecret')).toHaveCount(0)
 })
@@ -294,7 +294,7 @@ test('the switcher keeps each org section and loads it with the destination page
 		'memories',
 		'workflows',
 		'webhooks',
-		'mcp-servers',
+		'credentials',
 		'values',
 	]) {
 		await page.goto(`/@${user.username}/-/${section}`)
