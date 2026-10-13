@@ -104,7 +104,6 @@ export function PackageCredentialsRoute(handle: Handle) {
 	})
 
 	let page = { username: '', kodyId: '', orgSlug: '' }
-	let baseView: PackageCredentialsView | null = null
 	let editorPathname: string | null = null
 	let writes = 0
 	/** Writes that had landed when each view's GET started. */
@@ -118,7 +117,7 @@ export function PackageCredentialsRoute(handle: Handle) {
 	const editor = createPackageMappingEditor(handle, {
 		readPage: () => page,
 		onSaved(view) {
-			if (baseView && baseView.package.id === view.package.id) {
+			if (view.package.kodyId === page.kodyId) {
 				writes += 1
 				saved = { view, writes }
 				handle.update()
@@ -131,9 +130,9 @@ export function PackageCredentialsRoute(handle: Handle) {
 		currentHref: string,
 		pending: boolean,
 	) {
-		if (!loaded || !saved || saved.view.package.id !== loaded.package.id) {
-			return loaded
-		}
+		if (!saved || saved.view.package.kodyId !== page.kodyId) return loaded
+		if (!loaded) return saved.view
+		if (saved.view.package.id !== loaded.package.id) return loaded
 		if ((fetchedAfterWrites.get(loaded) ?? -1) >= saved.writes) {
 			saved = null
 			return loaded
@@ -163,7 +162,6 @@ export function PackageCredentialsRoute(handle: Handle) {
 		const username = shell?.username ?? path.username
 		const kodyId = shell?.kodyId ?? path.kodyId
 		page = { username, kodyId, orgSlug: username }
-		baseView = data?.view ?? null
 		if (pathname !== editorPathname) {
 			editorPathname = pathname
 			editor.reset()
