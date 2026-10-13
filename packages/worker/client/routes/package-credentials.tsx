@@ -50,7 +50,7 @@ function renderTab(tab: PackageCredentialsTab, context: PackageTabContext) {
 	}
 }
 
-export function packageCredentialsAgentPrompt(input: {
+function packageCredentialsAgentPrompt(input: {
 	pageUrl: string
 	error: string
 }) {
