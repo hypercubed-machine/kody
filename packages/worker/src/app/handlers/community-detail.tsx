@@ -746,7 +746,9 @@ export function createCommunityPackageCredentialApprovalHandler(env: Env) {
 					cache: 'private',
 				})
 			}
-			if (page.kind !== 'page' || !page.viewerIsOwner || !page.ownerPackage) {
+			// Execute-only members cannot open the package page, so read access
+			// is not required here; the approval API checks execute.
+			if (page.kind === 'page' && !page.hasPackage) {
 				return renderPackageNotFoundPage({ request, env })
 			}
 			return renderAppPage({
