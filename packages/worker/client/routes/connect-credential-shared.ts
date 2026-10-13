@@ -9,32 +9,34 @@ import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 
 /**
- * How the one-pager creates each kind: a Key form on the page, a hand-off to
- * the existing OAuth or MCP flow, or not on the website yet. The website save
- * does not take `kind`, `hosts`, or `login_exchange`, and `secretSet` only
- * changes a kind together with its value, so the opt-in kinds have no
- * website path that keeps the value out of an agent's hands.
+ * How the one-pager creates each kind: a form on the page for every kind the
+ * person types a value for, or a hand-off to the existing OAuth or MCP flow.
  */
-export type CredentialCreateMode = 'key-form' | 'handoff' | 'unavailable'
+export type CredentialCreateMode = 'value-form' | 'handoff'
+
+export type ValueFormKind = 'secret' | 'url' | 'login' | 'signing'
 
 export function credentialCreateMode(
 	kind: CredentialKind,
 ): CredentialCreateMode {
 	switch (kind) {
 		case 'secret':
-			return 'key-form'
-		case 'oauth':
-		case 'mcp':
-			return 'handoff'
 		case 'url':
 		case 'login':
 		case 'signing':
-			return 'unavailable'
+			return 'value-form'
+		case 'oauth':
+		case 'mcp':
+			return 'handoff'
 		default: {
 			const exhaustive: never = kind
 			return exhaustive
 		}
 	}
+}
+
+export function isValueFormKind(kind: CredentialKind): kind is ValueFormKind {
+	return credentialCreateMode(kind) === 'value-form'
 }
 
 export function credentialCreateKindSummary(kind: CredentialKind) {
@@ -110,7 +112,10 @@ export function credentialCreateHandoffHref(input: {
 	}
 }
 
-/** The org Key the form would replace: same name, not package-scoped. */
+/**
+ * The org credential the form would replace: same name, not package-scoped.
+ * Url, login, and signing credentials share the Key namespace.
+ */
 export function findExistingOrgKey(
 	credentials: ReadonlyArray<CredentialListItem>,
 	name: string,
@@ -120,6 +125,7 @@ export function findExistingOrgKey(
 	return (
 		credentials.find(
 			(credential) =>
+				isValueFormKind(credential.kind) &&
 				credential.scope === 'org' &&
 				credential.packageId === null &&
 				credential.name === wanted,
@@ -155,6 +161,51 @@ export function parseHostsInput(text: string) {
 	]
 }
 
+/**
+ * The creation link's `loginExchange` param: the JSON `login_exchange` a
+ * package's login need expects, so the person only types their login fields.
+ */
+export const loginExchangeParam = 'loginExchange'
+
+export type LoginExchangeForm = {
+	url: string
+	bodyFormat: 'json' | 'form'
+	/** The exchange body as JSON; `{field}` in a value is a login field. */
+	body: string
+	tokenPath: string
+	/** Exchange fields the form does not edit (method, ttl, expiry path). */
+	rest: Record<string, unknown>
+}
+
+const defaultLoginExchangeBody =
+	'{"username":"{username}","password":"{password}"}'
+
+function readLoginExchangeParam(
+	passthrough: URLSearchParams,
+): LoginExchangeForm {
+	let parsed: unknown = null
+	try {
+		parsed = JSON.parse(passthrough.get(loginExchangeParam) ?? 'null')
+	} catch {
+		parsed = null
+	}
+	const record =
+		parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: {}
+	const { url, bodyFormat, body, tokenPath, ...rest } = record
+	return {
+		url: typeof url === 'string' ? url : '',
+		bodyFormat: bodyFormat === 'form' ? 'form' : 'json',
+		body:
+			body && typeof body === 'object'
+				? JSON.stringify(body)
+				: defaultLoginExchangeBody,
+		tokenPath: typeof tokenPath === 'string' ? tokenPath : '',
+		rest,
+	}
+}
+
 export type KeyFormState = {
 	name: string
 	value: string
@@ -162,8 +213,11 @@ export type KeyFormState = {
 	provider: string
 	hosts: string
 	expiresAt: string
-	/** Replace the existing org Key with this name instead of failing. */
+	/** Replace the existing org credential with this name instead of failing. */
 	replaceExisting: boolean
+	/** Login field values by field name; only the `login` kind reads them. */
+	loginFields: Record<string, string>
+	loginExchange: LoginExchangeForm
 }
 
 export function createKeyFormState(
@@ -177,43 +231,145 @@ export function createKeyFormState(
 		hosts: query.allowedHosts.join('\n'),
 		expiresAt: '',
 		replaceExisting: false,
+		loginFields: {},
+		loginExchange: readLoginExchangeParam(query.passthrough),
 	}
 }
 
+function parseExchangeBody(text: string): Record<string, string> | null {
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(text)
+	} catch {
+		return null
+	}
+	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+		return null
+	}
+	const entries = Object.entries(parsed)
+	return entries.every((entry) => typeof entry[1] === 'string')
+		? Object.fromEntries(entries as Array<[string, string]>)
+		: null
+}
+
 /**
- * The `/account/secrets.json` save for the Key form. Replacing keeps the
- * existing Key's hosts and adds the form's.
+ * The login fields the exchange body asks for (`{username}` and so on), in
+ * order. Falls back to username and password while the body is not valid.
+ */
+export function loginFieldNames(exchange: LoginExchangeForm) {
+	const body = parseExchangeBody(exchange.body)
+	if (!body) return ['username', 'password']
+	const names = Object.values(body).flatMap((value) =>
+		[...value.matchAll(/\{([A-Za-z0-9_.-]+)\}/g)].map((match) => match[1]!),
+	)
+	return names.length > 0 ? [...new Set(names)] : ['username', 'password']
+}
+
+/** A login field holding a password or token is masked in the form. */
+export function isMaskedLoginField(name: string) {
+	return /pass|secret|token|key|pin|otp|code/i.test(name)
+}
+
+export type CredentialSaveBody =
+	| { ok: true; body: Record<string, unknown> }
+	| { ok: false; error: string }
+
+/**
+ * The `/account/secrets.json` save for the value form. Replacing a Key keeps
+ * its hosts and adds the form's; the opt-in kinds take exactly the form's
+ * hosts, because whoever types the value decides where it may go.
  */
 export function buildKeySaveBody(input: {
+	kind: ValueFormKind
 	form: KeyFormState
 	existing: CredentialListItem | null
-}) {
-	const name = input.form.name.trim()
-	const replacing = input.form.replaceExisting && input.existing !== null
-	const hosts = parseHostsInput(input.form.hosts)
-	return {
+}): CredentialSaveBody {
+	const { form } = input
+	const name = form.name.trim()
+	const replacing = form.replaceExisting && input.existing !== null
+	const hosts = parseHostsInput(form.hosts)
+	const common = {
 		action: 'save',
 		currentId: replacing ? buildAccountSecretId({ name, scope: 'user' }) : null,
 		name,
 		scope: 'user',
-		value: input.form.value,
-		description: input.form.description.trim(),
-		provider: input.form.provider.trim() || null,
-		expiresAt: input.form.expiresAt.trim() || null,
-		allowedHosts: replacing
-			? [...new Set([...(input.existing?.hosts ?? []), ...hosts])]
-			: hosts,
+		description: form.description.trim(),
+		provider: form.provider.trim() || null,
+		expiresAt: form.expiresAt.trim() || null,
 		allowedPackages: replacing
 			? (input.existing?.lockedToPackageIds ?? [])
 			: [],
 	}
+	switch (input.kind) {
+		case 'secret':
+			return {
+				ok: true,
+				body: {
+					...common,
+					value: form.value,
+					allowedHosts: replacing
+						? [...new Set([...(input.existing?.hosts ?? []), ...hosts])]
+						: hosts,
+				},
+			}
+		case 'url':
+		case 'signing':
+			return {
+				ok: true,
+				body: {
+					...common,
+					kind: input.kind,
+					value: form.value.trim(),
+					hosts,
+					allowedHosts: [],
+				},
+			}
+		case 'login': {
+			const body = parseExchangeBody(form.loginExchange.body)
+			if (!body) {
+				return {
+					ok: false,
+					error:
+						'The exchange body must be a JSON object of text values, for example {"username":"{username}"}.',
+				}
+			}
+			const fields = Object.fromEntries(
+				loginFieldNames(form.loginExchange).map((field) => [
+					field,
+					form.loginFields[field] ?? '',
+				]),
+			)
+			return {
+				ok: true,
+				body: {
+					...common,
+					kind: 'login',
+					value: JSON.stringify(fields),
+					hosts,
+					allowedHosts: [],
+					loginExchange: {
+						...form.loginExchange.rest,
+						url: form.loginExchange.url.trim(),
+						bodyFormat: form.loginExchange.bodyFormat,
+						body,
+						tokenPath: form.loginExchange.tokenPath.trim(),
+					},
+				},
+			}
+		}
+		default: {
+			const exhaustive: never = input.kind
+			return exhaustive
+		}
+	}
 }
 
-/** A prompt the person can hand their agent when the website cannot help. */
+/** A prompt the person can hand their agent when a save fails. */
 export function credentialCreateAgentPrompt(input: {
 	kind: CredentialKind
 	query: ParsedCredentialCreateQuery
 	pageUrl: string
+	error: string
 }) {
 	const label = credentialKindLabel(input.kind)
 	const name = input.query.name ? ` named "${input.query.name}"` : ''
@@ -222,8 +378,8 @@ export function credentialCreateAgentPrompt(input: {
 			? ` for the "${input.query.needKey}" need of package ${input.query.packageKodyId}`
 			: ''
 	return [
-		`I opened a Kody credential link that asks for a ${label} credential${name}${forPackage}: ${input.pageUrl}`,
-		`The website cannot create a ${label} credential yet.`,
-		`Suggest another way to meet this need without me pasting the value into chat, or tell me which credential I already have that fits.`,
+		`I tried to save a ${label} credential${name}${forPackage} on Kody: ${input.pageUrl}`,
+		`Kody said: ${input.error}`,
+		`Help me fix the link or the form. Do not ask me to paste the value into chat.`,
 	].join('\n')
 }

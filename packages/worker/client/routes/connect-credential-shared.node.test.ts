@@ -12,6 +12,8 @@ import {
 	credentialCreateMode,
 	findExistingOrgKey,
 	findMatchingCredentials,
+	isMaskedLoginField,
+	loginFieldNames,
 	parseHostsInput,
 	writeCredentialCreateKind,
 } from './connect-credential-shared.ts'
@@ -41,18 +43,18 @@ function credential(
 const query = (search: string) =>
 	parseCredentialCreateQuery(new URLSearchParams(search))
 
-test('the website creates Keys, hands off OAuth and MCP, and says the rest are unavailable', () => {
+test('the website takes a typed value for every kind but OAuth and MCP, which it hands off', () => {
 	expect(
 		Object.fromEntries(
 			credentialKinds.map((kind) => [kind, credentialCreateMode(kind)]),
 		),
 	).toEqual({
-		secret: 'key-form',
+		secret: 'value-form',
 		oauth: 'handoff',
 		mcp: 'handoff',
-		url: 'unavailable',
-		login: 'unavailable',
-		signing: 'unavailable',
+		url: 'value-form',
+		login: 'value-form',
+		signing: 'value-form',
 	})
 })
 
@@ -93,23 +95,35 @@ test('the Key form starts from the link and saves an org Key', () => {
 		hosts: 'api.openai.com\nuploads.openai.com',
 		expiresAt: '',
 		replaceExisting: false,
+		loginFields: {},
+		loginExchange: {
+			url: '',
+			bodyFormat: 'json',
+			body: '{"username":"{username}","password":"{password}"}',
+			tokenPath: '',
+			rest: {},
+		},
 	})
 	expect(
 		buildKeySaveBody({
+			kind: 'secret',
 			form: { ...form, value: 'sk-1', hosts: 'API.openai.com, x.dev\nx.dev' },
 			existing: null,
 		}),
 	).toEqual({
-		action: 'save',
-		currentId: null,
-		name: 'OPENAI_API_KEY',
-		scope: 'user',
-		value: 'sk-1',
-		description: 'For summaries',
-		provider: 'openai',
-		expiresAt: null,
-		allowedHosts: ['api.openai.com', 'x.dev'],
-		allowedPackages: [],
+		ok: true,
+		body: {
+			action: 'save',
+			currentId: null,
+			name: 'OPENAI_API_KEY',
+			scope: 'user',
+			value: 'sk-1',
+			description: 'For summaries',
+			provider: 'openai',
+			expiresAt: null,
+			allowedHosts: ['api.openai.com', 'x.dev'],
+			allowedPackages: [],
+		},
 	})
 })
 
@@ -132,11 +146,19 @@ test('replacing an existing Key keeps its hosts and package locks', () => {
 		value: 'sk-2',
 		replaceExisting: true,
 	}
-	expect(buildKeySaveBody({ form, existing })).toMatchObject({
-		currentId: 'user::::OPENAI_API_KEY',
-		allowedHosts: ['api.openai.com', 'x.dev'],
-		allowedPackages: ['pkg-1'],
+	expect(buildKeySaveBody({ kind: 'secret', form, existing })).toMatchObject({
+		body: {
+			currentId: 'user::::OPENAI_API_KEY',
+			allowedHosts: ['api.openai.com', 'x.dev'],
+			allowedPackages: ['pkg-1'],
+		},
 	})
+	expect(
+		findExistingOrgKey(
+			[credential({ id: 'o1', name: 'gh', kind: 'oauth' })],
+			'gh',
+		),
+	).toBeNull()
 })
 
 test('matches need a provider, and a kind when the link names one', () => {
@@ -160,18 +182,102 @@ test('hosts accept lines, commas, and spaces', () => {
 	])
 })
 
-test('the agent prompt names the kind, credential, need, and link', () => {
+test('url and signing saves send kind and exactly the typed hosts', () => {
+	const existing = credential({
+		id: 'u1',
+		name: 'BOT_URL',
+		kind: 'url',
+		hosts: ['old.example.com'],
+		lockedToPackageIds: ['pkg-1'],
+	})
+	const form = {
+		...createKeyFormState(
+			query('kind=url&name=BOT_URL&allowedHosts=hooks.example.com'),
+		),
+		value: ' https://hooks.example.com/abc ',
+		replaceExisting: true,
+	}
+	expect(buildKeySaveBody({ kind: 'url', form, existing })).toEqual({
+		ok: true,
+		body: {
+			action: 'save',
+			currentId: 'user::::BOT_URL',
+			name: 'BOT_URL',
+			scope: 'user',
+			kind: 'url',
+			value: 'https://hooks.example.com/abc',
+			hosts: ['hooks.example.com'],
+			allowedHosts: [],
+			allowedPackages: ['pkg-1'],
+			description: '',
+			provider: null,
+			expiresAt: null,
+		},
+	})
+	expect(
+		buildKeySaveBody({ kind: 'signing', form, existing: null }),
+	).toMatchObject({ ok: true, body: { kind: 'signing', currentId: null } })
+})
+
+test('a login save builds its value from the exchange body fields', () => {
+	const exchange = {
+		url: 'https://api.example.com/login',
+		bodyFormat: 'form',
+		body: { email: '{email}', pass: '{password}', client: 'kody' },
+		tokenPath: 'data.token',
+		ttlSeconds: 600,
+	}
+	const form = createKeyFormState(
+		query(
+			`kind=login&name=SITE&allowedHosts=api.example.com&loginExchange=${encodeURIComponent(JSON.stringify(exchange))}`,
+		),
+	)
+	expect(loginFieldNames(form.loginExchange)).toEqual(['email', 'password'])
+	expect(isMaskedLoginField('password')).toBe(true)
+	expect(isMaskedLoginField('email')).toBe(false)
+	const save = buildKeySaveBody({
+		kind: 'login',
+		form: {
+			...form,
+			loginFields: { email: 'me@x.dev', password: 'pw', extra: 'no' },
+		},
+		existing: null,
+	})
+	expect(save).toMatchObject({
+		ok: true,
+		body: {
+			kind: 'login',
+			value: JSON.stringify({ email: 'me@x.dev', password: 'pw' }),
+			hosts: ['api.example.com'],
+			loginExchange: exchange,
+		},
+	})
+	expect(
+		buildKeySaveBody({
+			kind: 'login',
+			form: { ...form, loginExchange: { ...form.loginExchange, body: '[1]' } },
+			existing: null,
+		}),
+	).toMatchObject({ ok: false, error: expect.stringContaining('JSON object') })
+	expect(loginFieldNames({ ...form.loginExchange, body: 'not json' })).toEqual([
+		'username',
+		'password',
+	])
+})
+
+test('the agent prompt names the kind, credential, need, link, and error', () => {
 	expect(
 		credentialCreateAgentPrompt({
 			kind: 'url',
 			query: query('kind=url&name=BOT_URL&forPackage=bot&need=telegram'),
 			pageUrl: 'https://kody.codes/connect/credential?kind=url',
+			error: 'A url credential needs hosts.',
 		}),
 	).toBe(
 		[
-			'I opened a Kody credential link that asks for a URL credential named "BOT_URL" for the "telegram" need of package bot: https://kody.codes/connect/credential?kind=url',
-			'The website cannot create a URL credential yet.',
-			'Suggest another way to meet this need without me pasting the value into chat, or tell me which credential I already have that fits.',
+			'I tried to save a URL credential named "BOT_URL" for the "telegram" need of package bot on Kody: https://kody.codes/connect/credential?kind=url',
+			'Kody said: A url credential needs hosts.',
+			'Help me fix the link or the form. Do not ask me to paste the value into chat.',
 		].join('\n'),
 	)
 })

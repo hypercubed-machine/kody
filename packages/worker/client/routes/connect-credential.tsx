@@ -23,7 +23,11 @@ import {
 	credentialCreateTitle,
 	findExistingOrgKey,
 	findMatchingCredentials,
+	isMaskedLoginField,
+	isValueFormKind,
 	type KeyFormState,
+	loginFieldNames,
+	type ValueFormKind,
 	writeCredentialCreateKind,
 } from '#client/routes/connect-credential-shared.ts'
 import {
@@ -92,12 +96,6 @@ const kindOptionSelectedCss = {
 	boxShadow: `inset 0 0 0 1px ${colors.primary}`,
 }
 
-const kindOptionUnavailableCss = {
-	...kindOptionCss,
-	color: colors.textMuted,
-	borderStyle: 'dashed',
-}
-
 const mutedCss = { margin: 0, color: colors.textMuted }
 const errorCss = { margin: 0, color: colors.danger }
 const labelHintCss = {
@@ -131,26 +129,6 @@ function renderKindOption(input: {
 	selected: boolean
 	href: string
 }) {
-	const unavailable = credentialCreateMode(input.kind) === 'unavailable'
-	const body = (
-		<>
-			<strong>{credentialKindLabel(input.kind)}</strong>
-			<span mix={css({ color: colors.textMuted })}>
-				{unavailable
-					? 'Not available on the website yet.'
-					: credentialCreateKindSummary(input.kind)}
-			</span>
-		</>
-	)
-	if (unavailable && !input.selected) {
-		return (
-			<li key={input.kind} mix={css({ listStyle: 'none' })}>
-				<span aria-disabled="true" mix={css(kindOptionUnavailableCss)}>
-					{body}
-				</span>
-			</li>
-		)
-	}
 	return (
 		<li key={input.kind} mix={css({ listStyle: 'none' })}>
 			<a
@@ -159,10 +137,47 @@ function renderKindOption(input: {
 				data-testid={`credential-kind-${input.kind}`}
 				mix={css(input.selected ? kindOptionSelectedCss : kindOptionCss)}
 			>
-				{body}
+				<strong>{credentialKindLabel(input.kind)}</strong>
+				<span mix={css({ color: colors.textMuted })}>
+					{credentialCreateKindSummary(input.kind)}
+				</span>
 			</a>
 		</li>
 	)
+}
+
+function valuePlaceholder(kind: ValueFormKind) {
+	switch (kind) {
+		case 'secret':
+			return 'Paste the value'
+		case 'url':
+			return 'https://hooks.example.com/…'
+		case 'signing':
+			return 'Paste the signing secret or private key'
+		case 'login':
+			return ''
+		default: {
+			const exhaustive: never = kind
+			return exhaustive
+		}
+	}
+}
+
+function hostsHint(kind: ValueFormKind) {
+	switch (kind) {
+		case 'secret':
+			return 'Kody fills the value only on HTTPS requests to these hosts.'
+		case 'url':
+			return 'Kody sends this URL only to these hosts. Its own host must be one of them.'
+		case 'login':
+			return 'Kody logs in and sends the session token only to these hosts. The exchange URL must be on one of them.'
+		case 'signing':
+			return 'Kody signs only for requests to these hosts.'
+		default: {
+			const exhaustive: never = kind
+			return exhaustive
+		}
+	}
 }
 
 function renderMatches(input: {
@@ -203,8 +218,9 @@ function renderMatches(input: {
 
 /**
  * `/connect/credential`: the creation link agents hand out. One page picks
- * the kind (fixed when the link requires it), creates a Key in place, and
- * hands OAuth and MCP to their own flows with the link's prefill.
+ * the kind (fixed when the link requires it), saves a Key, URL, login, or
+ * signing credential in place, and hands OAuth and MCP to their own flows with
+ * the link's prefill.
  */
 export function ConnectCredentialRoute(handle: Handle) {
 	let data: AccountCredentialsResponse | null = null
@@ -235,13 +251,19 @@ export function ConnectCredentialRoute(handle: Handle) {
 		if (response.ok && payload?.ok) data = payload
 	}
 
-	async function saveKey(event: SubmitEvent) {
+	async function saveKey(event: SubmitEvent, kind: ValueFormKind) {
 		event.preventDefault()
 		if (saving || !form) return
 		const current = form
 		const existing = findExistingOrgKey(data?.credentials ?? [], current.name)
 		if (existing && !current.replaceExisting) {
-			message = `A key named ${current.name.trim()} already exists. Choose “Replace its value” or pick another name.`
+			message = `A credential named ${current.name.trim()} already exists. Choose “Replace it” or pick another name.`
+			handle.update()
+			return
+		}
+		const save = buildKeySaveBody({ kind, form: current, existing })
+		if (!save.ok) {
+			message = save.error
 			handle.update()
 			return
 		}
@@ -256,7 +278,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 					'Content-Type': 'application/json',
 				},
 				credentials: 'include',
-				body: JSON.stringify(buildKeySaveBody({ form: current, existing })),
+				body: JSON.stringify(save.body),
 			})
 			if (response.status === 401) {
 				window.location.assign(
@@ -266,10 +288,10 @@ export function ConnectCredentialRoute(handle: Handle) {
 			}
 			const payload = await readJson<{ ok?: boolean; error?: string }>(response)
 			if (!response.ok || !payload?.ok) {
-				throw new Error(payload?.error || 'Unable to save this key.')
+				throw new Error(payload?.error || 'Unable to save this credential.')
 			}
 			savedName = current.name.trim()
-			form = { ...current, value: '' }
+			form = { ...current, value: '', loginFields: {} }
 			await refreshCredentials()
 		} catch (error) {
 			message = error instanceof Error ? error.message : 'Unable to save.'
@@ -280,11 +302,14 @@ export function ConnectCredentialRoute(handle: Handle) {
 	}
 
 	function renderKeyForm(input: {
+		kind: ValueFormKind
 		state: KeyFormState
 		existing: CredentialListItem | null
 		orgSlug: string
+		prompt: (error: string) => string
 	}) {
-		const { state, existing } = input
+		const { kind, state, existing } = input
+		const isKey = kind === 'secret'
 		const update = (patch: Partial<KeyFormState>) => {
 			form = { ...state, ...patch }
 			handle.update()
@@ -319,7 +344,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 					mix={[
 						css({ display: 'grid', gap: spacing.md }),
 						on('submit', (event) => {
-							void saveKey(event)
+							void saveKey(event, kind)
 						}),
 					]}
 				>
@@ -344,8 +369,14 @@ export function ConnectCredentialRoute(handle: Handle) {
 							]}
 						/>
 						<span mix={css(mutedCss)}>
-							Code refers to it as{' '}
-							<code>{`{{secret:${state.name || 'NAME'}}}`}</code>.
+							{isKey ? (
+								<>
+									Code refers to it as{' '}
+									<code>{`{{secret:${state.name || 'NAME'}}}`}</code>.
+								</>
+							) : (
+								'Packages ask Kody to use it by name. They never see the value.'
+							)}
 						</span>
 					</div>
 					{existing ? (
@@ -365,48 +396,66 @@ export function ConnectCredentialRoute(handle: Handle) {
 								)}
 							/>
 							<span>
-								A key named <code>{existing.name}</code> already exists. Replace
-								its value (its hosts and package locks stay).
+								{isKey ? (
+									<>
+										A credential named <code>{existing.name}</code> already
+										exists. Replace it (its hosts and package locks stay).
+									</>
+								) : (
+									<>
+										A credential named <code>{existing.name}</code> already
+										exists. Replace it (its package locks stay; its hosts become
+										the ones below).
+									</>
+								)}
 							</span>
 						</label>
 					) : null}
-					<div mix={css(fieldCss)}>
-						<label for="connect-credential-value" mix={css(fieldLabelCss)}>
-							Value
-						</label>
-						<PasswordRevealInput
-							id="connect-credential-value"
-							required
-							autoFocus={Boolean(state.name)}
-							{...passwordManagerIgnoreProps}
-							value={state.value}
-							placeholder="Paste the value"
-							revealNoun="value"
-							revealed={showValue}
-							onRevealedChange={(next) => {
-								showValue = next
-								handle.update()
-							}}
-							mix={[
-								css(inputCss),
-								on('input', (event) =>
-									update({ value: event.currentTarget.value }),
-								),
-							]}
-						/>
-						<span mix={css(mutedCss)}>
-							Only Kody sees the value. Agents and package code never do.
-						</span>
-					</div>
+					{kind === 'login' ? (
+						renderLoginFields({ state, update })
+					) : (
+						<div mix={css(fieldCss)}>
+							<label for="connect-credential-value" mix={css(fieldLabelCss)}>
+								Value
+							</label>
+							<PasswordRevealInput
+								id="connect-credential-value"
+								required
+								autoFocus={Boolean(state.name)}
+								{...passwordManagerIgnoreProps}
+								value={state.value}
+								placeholder={valuePlaceholder(kind)}
+								revealNoun="value"
+								revealed={showValue}
+								onRevealedChange={(next) => {
+									showValue = next
+									handle.update()
+								}}
+								mix={[
+									css(inputCss),
+									on('input', (event) =>
+										update({ value: event.currentTarget.value }),
+									),
+								]}
+							/>
+							<span mix={css(mutedCss)}>
+								Only Kody sees the value. Agents and package code never do.
+							</span>
+						</div>
+					)}
 					<div mix={css(fieldCss)}>
 						<label for="connect-credential-hosts" mix={css(fieldLabelCss)}>
-							Allowed hosts <span mix={css(labelHintCss)}>(one per line)</span>
+							{isKey ? 'Allowed hosts' : 'Hosts'}{' '}
+							<span mix={css(labelHintCss)}>(one per line)</span>
 						</label>
 						<textarea
 							id="connect-credential-hosts"
 							rows={2}
+							required={!isKey}
 							value={state.hosts}
-							placeholder="api.example.com"
+							placeholder={
+								isKey ? 'api.example.com' : 'api.example.com or *.example.com'
+							}
 							mix={[
 								css(inputCss),
 								on('input', (event) =>
@@ -414,10 +463,9 @@ export function ConnectCredentialRoute(handle: Handle) {
 								),
 							]}
 						/>
-						<span mix={css(mutedCss)}>
-							Kody fills the value only on HTTPS requests to these hosts.
-						</span>
+						<span mix={css(mutedCss)}>{hostsHint(kind)}</span>
 					</div>
+					{kind === 'login' ? renderLoginExchange({ state, update }) : null}
 					<div mix={css(fieldCss)}>
 						<label for="connect-credential-provider" mix={css(fieldLabelCss)}>
 							Provider <span mix={css(labelHintCss)}>(optional)</span>
@@ -469,9 +517,22 @@ export function ConnectCredentialRoute(handle: Handle) {
 						/>
 					</div>
 					{message ? (
-						<p mix={css(errorCss)} data-testid="connect-credential-message">
-							{message}
-						</p>
+						<div
+							role="alert"
+							mix={css({
+								display: 'grid',
+								gap: spacing.sm,
+								justifyItems: 'start',
+							})}
+						>
+							<p mix={css(errorCss)} data-testid="connect-credential-message">
+								{message}
+							</p>
+							<CopyTextButton
+								value={input.prompt(message)}
+								idleLabel="Copy prompt for your agent"
+							/>
+						</div>
 					) : null}
 					<button
 						type="submit"
@@ -479,7 +540,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 						data-testid="connect-credential-save"
 						mix={css(primaryButtonCss)}
 					>
-						{saving ? 'Saving…' : 'Save key'}
+						{saving ? 'Saving…' : isKey ? 'Save key' : 'Save credential'}
 					</button>
 				</form>
 			</section>
@@ -561,29 +622,222 @@ export function ConnectCredentialRoute(handle: Handle) {
 							kind: selected,
 							search,
 							orgSlug,
-							prompt: credentialCreateAgentPrompt({
-								kind: selected,
-								query,
-								pageUrl,
-							}),
-							keyForm: () => renderKeyForm({ state, existing, orgSlug }),
+							valueForm: (kind) =>
+								renderKeyForm({
+									kind,
+									state,
+									existing,
+									orgSlug,
+									prompt: (error) =>
+										credentialCreateAgentPrompt({
+											kind,
+											query,
+											pageUrl,
+											error,
+										}),
+								}),
 						})}
 			</section>
 		)
 	}
 }
 
+function renderLoginFields(input: {
+	state: KeyFormState
+	update: (patch: Partial<KeyFormState>) => void
+}) {
+	const { state, update } = input
+	return (
+		<fieldset
+			mix={css({
+				display: 'grid',
+				gap: spacing.sm,
+				border: 'none',
+				margin: 0,
+				padding: 0,
+			})}
+		>
+			<legend mix={css({ ...fieldLabelCss, padding: 0 })}>Login</legend>
+			{loginFieldNames(state.loginExchange).map((field, index) => {
+				const id = `connect-credential-login-${field}`
+				const setField = (value: string) =>
+					update({ loginFields: { ...state.loginFields, [field]: value } })
+				return (
+					<div key={field} mix={css(fieldCss)}>
+						<label for={id} mix={css(fieldLabelCss)}>
+							{field.charAt(0).toUpperCase() + field.slice(1)}
+						</label>
+						{isMaskedLoginField(field) ? (
+							<PasswordRevealInput
+								id={id}
+								required
+								{...passwordManagerIgnoreProps}
+								value={state.loginFields[field] ?? ''}
+								revealNoun={field}
+								mix={[
+									css(inputCss),
+									on('input', (event) => setField(event.currentTarget.value)),
+								]}
+							/>
+						) : (
+							<input
+								id={id}
+								required
+								autoFocus={index === 0 && Boolean(state.name)}
+								{...passwordManagerIgnoreProps}
+								value={state.loginFields[field] ?? ''}
+								mix={[
+									css(inputCss),
+									on('input', (event) => setField(event.currentTarget.value)),
+								]}
+							/>
+						)}
+					</div>
+				)
+			})}
+			<span mix={css(mutedCss)}>
+				Only Kody sees these. Agents and package code get a session token, never
+				your login.
+			</span>
+		</fieldset>
+	)
+}
+
+function renderLoginExchange(input: {
+	state: KeyFormState
+	update: (patch: Partial<KeyFormState>) => void
+}) {
+	const { state, update } = input
+	const exchange = state.loginExchange
+	const setExchange = (patch: Partial<KeyFormState['loginExchange']>) =>
+		update({ loginExchange: { ...exchange, ...patch } })
+	let exchangeHost: string | null = null
+	try {
+		exchangeHost = exchange.url ? new URL(exchange.url).host : null
+	} catch {
+		exchangeHost = null
+	}
+	return (
+		<details
+			open={!exchangeHost || !exchange.tokenPath}
+			data-testid="connect-credential-login-exchange"
+			mix={css({ display: 'grid', gap: spacing.sm })}
+		>
+			<summary mix={css({ cursor: 'pointer' })}>
+				{exchangeHost && exchange.tokenPath ? (
+					<>
+						Kody sends your login to <code>{exchangeHost}</code> and reads the
+						session token from <code>{exchange.tokenPath}</code>.
+					</>
+				) : (
+					'How Kody logs in'
+				)}
+			</summary>
+			<div
+				mix={css({ display: 'grid', gap: spacing.md, paddingTop: spacing.sm })}
+			>
+				<div mix={css(fieldCss)}>
+					<label for="connect-credential-exchange-url" mix={css(fieldLabelCss)}>
+						Login URL
+					</label>
+					<input
+						id="connect-credential-exchange-url"
+						type="url"
+						required
+						value={exchange.url}
+						placeholder="https://api.example.com/login"
+						mix={[
+							css(inputCss),
+							on('input', (event) =>
+								setExchange({ url: event.currentTarget.value }),
+							),
+						]}
+					/>
+				</div>
+				<div mix={css(fieldCss)}>
+					<label
+						for="connect-credential-exchange-format"
+						mix={css(fieldLabelCss)}
+					>
+						Sent as
+					</label>
+					<select
+						id="connect-credential-exchange-format"
+						value={exchange.bodyFormat}
+						mix={[
+							css(inputCss),
+							on('change', (event) =>
+								setExchange({
+									bodyFormat:
+										event.currentTarget.value === 'form' ? 'form' : 'json',
+								}),
+							),
+						]}
+					>
+						<option value="json">JSON</option>
+						<option value="form">Form fields</option>
+					</select>
+				</div>
+				<div mix={css(fieldCss)}>
+					<label
+						for="connect-credential-exchange-body"
+						mix={css(fieldLabelCss)}
+					>
+						Request body{' '}
+						<span mix={css(labelHintCss)}>
+							(JSON; <code>{'{username}'}</code> is replaced by that login
+							field)
+						</span>
+					</label>
+					<textarea
+						id="connect-credential-exchange-body"
+						rows={2}
+						required
+						value={exchange.body}
+						mix={[
+							css(inputCss),
+							on('input', (event) =>
+								setExchange({ body: event.currentTarget.value }),
+							),
+						]}
+					/>
+				</div>
+				<div mix={css(fieldCss)}>
+					<label
+						for="connect-credential-exchange-token"
+						mix={css(fieldLabelCss)}
+					>
+						Token path{' '}
+						<span mix={css(labelHintCss)}>(where the response holds it)</span>
+					</label>
+					<input
+						id="connect-credential-exchange-token"
+						required
+						value={exchange.tokenPath}
+						placeholder="data.token"
+						mix={[
+							css(inputCss),
+							on('input', (event) =>
+								setExchange({ tokenPath: event.currentTarget.value }),
+							),
+						]}
+					/>
+				</div>
+			</div>
+		</details>
+	)
+}
+
 function renderKindBody(input: {
 	kind: CredentialKind
 	search: URLSearchParams
 	orgSlug: string
-	prompt: string
-	keyForm: () => RemixNode
+	valueForm: (kind: ValueFormKind) => RemixNode
 }) {
 	const mode = credentialCreateMode(input.kind)
 	switch (mode) {
-		case 'key-form':
-			return input.keyForm()
+		case 'value-form':
+			return isValueFormKind(input.kind) ? input.valueForm(input.kind) : null
 		case 'handoff': {
 			const kind = input.kind === 'oauth' ? 'oauth' : 'mcp'
 			const provider = input.search.get('provider')?.trim()
@@ -610,27 +864,6 @@ function renderKindBody(input: {
 				</section>
 			)
 		}
-		case 'unavailable':
-			return (
-				<section
-					mix={css({ ...cardCss, border: `1px dashed ${colors.border}` })}
-					data-testid="connect-credential-unavailable"
-				>
-					<p mix={css({ margin: 0 })}>
-						Creating a {credentialKindLabel(input.kind)} credential on the
-						website is not available yet.
-					</p>
-					<p mix={css(mutedCss)}>
-						Copy this prompt for your agent. It can suggest another way to meet
-						the need without you pasting the value into chat.
-					</p>
-					<CopyTextButton
-						value={input.prompt}
-						idleLabel="Copy prompt for your agent"
-						variant="primary"
-					/>
-				</section>
-			)
 		default: {
 			const exhaustive: never = mode
 			return exhaustive

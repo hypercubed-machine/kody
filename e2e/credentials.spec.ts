@@ -78,7 +78,7 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	}
 })
 
-test('the creation link saves a Key from its prefill and offers the other kinds', async ({
+test('the creation link saves Key, URL, and login credentials from their prefill', async ({
 	page,
 	seedE2eUser,
 	login,
@@ -128,10 +128,56 @@ test('the creation link saves a Key from its prefill and offers the other kinds'
 		'/connect/oauth?kind=oauth&provider=github',
 	)
 
-	await page.goto('/connect/credential?kind=url&kindMode=required&name=BOT_URL')
+	// A URL credential takes its hosts; a value off those hosts is refused
+	// with a prompt the person can hand their agent.
+	await page.goto(
+		'/connect/credential?kind=url&kindMode=required&name=BOT_URL&allowedHosts=api.telegram.org',
+	)
 	await waitForClientHydration(page)
-	await expect(page.getByTestId('connect-credential-unavailable')).toBeVisible()
+	await expect(
+		page.getByRole('heading', { name: 'Add a URL credential' }),
+	).toBeVisible()
+	await expect(page.getByLabel(/^Hosts/)).toHaveValue('api.telegram.org')
+	const urlValue = `https://api.telegram.org/bot${runId}:never-shown/sendMessage`
+	await page
+		.getByRole('textbox', { name: 'Value' })
+		.fill('https://hooks.example.com/elsewhere')
+	await page.getByTestId('connect-credential-save').click()
+	await expect(page.getByTestId('connect-credential-message')).toContainText(
+		'must be one of its hosts',
+	)
 	await expect(
 		page.getByRole('button', { name: 'Copy prompt for your agent' }),
 	).toBeVisible()
+	await page.getByRole('textbox', { name: 'Value' }).fill(urlValue)
+	await page.getByTestId('connect-credential-save').click()
+	await expect(page.getByTestId('connect-credential-saved')).toContainText(
+		'BOT_URL is saved',
+	)
+	await page.getByRole('link', { name: 'View credential' }).click()
+	const urlPane = page.getByRole('region', { name: 'BOT_URL details' })
+	await expect(urlPane.getByText('api.telegram.org')).toBeVisible()
+	await expect(page.getByText(urlValue)).toHaveCount(0)
+
+	// A login link carries its exchange, so the person types only the fields
+	// the exchange body names.
+	const exchange = {
+		url: 'https://api.example.com/session',
+		bodyFormat: 'json',
+		body: { email: '{email}', password: '{password}' },
+		tokenPath: 'data.token',
+	}
+	await page.goto(
+		`/connect/credential?kind=login&name=SITE_LOGIN&allowedHosts=api.example.com&loginExchange=${encodeURIComponent(JSON.stringify(exchange))}`,
+	)
+	await waitForClientHydration(page)
+	await expect(
+		page.getByTestId('connect-credential-login-exchange'),
+	).toContainText('api.example.com')
+	await page.getByLabel('Email').fill('me@example.com')
+	await page.getByRole('textbox', { name: 'Password' }).fill(`pw-${runId}`)
+	await page.getByTestId('connect-credential-save').click()
+	await expect(page.getByTestId('connect-credential-saved')).toContainText(
+		'SITE_LOGIN is saved',
+	)
 })
