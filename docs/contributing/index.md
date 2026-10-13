@@ -5,7 +5,8 @@ style, tests, MCP capabilities, and runtime architecture.
 
 ## Setup and workflow
 
-- [Engineering principles](../principles/index.md)
+- [Engineering principles](../principles/index.md) (including
+  [error prompt for agents](../principles/error-prompt-for-agents.md))
 - [Getting started](./getting-started.md), [project intent](./project-intent.md)
 - [Decision records](./decisions/index.md) (steering veto list: product-shaped
   nos and durable constraints — not an ADR-per-PR log)
@@ -86,7 +87,7 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Package codemods](./package-codemods.md)
 - [Public packages](./community-packages.md)
 - [Internet-visible packages](./internet-visible-packages.md) (forkable vs
-  internet-visible; capability approval; accepted ADR 0069)
+  internet-visible; capability approval; ADR 0069)
 - [Inbound webhooks](../use/webhooks.md) (external HTTP knock)
 - [Adding capabilities](./adding-capabilities.md)
 - [Search entity plugins](./search-entity-plugins.md) (plugin module + registry,
