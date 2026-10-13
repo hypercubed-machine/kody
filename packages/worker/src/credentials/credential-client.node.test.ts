@@ -953,6 +953,7 @@ test('a call map is validated before code runs: unknown keys fail an invoke and 
 				map: normalizeCredentialCallMap({ MAIL: 'resend-prod' })!,
 				packageIds: [],
 				strict: false,
+				baseUrl: 'https://example.com',
 			}),
 		),
 	).resolves.toMatchObject({ body: { code: 'credential_denied' } })
@@ -984,6 +985,7 @@ test('call map validation keeps the entry package pinned needs over a dependency
 			map: normalizeCredentialCallMap({ MAIL: 'resend-prod' })!,
 			packageIds: [entryId, depId],
 			strict: true,
+			baseUrl: 'https://example.com',
 		}),
 	).resolves.toEqual({ warnings: [] })
 })

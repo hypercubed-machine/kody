@@ -479,22 +479,15 @@ function pickExplicit(input: {
 	pick: CredentialPick
 	usable: ReadonlyArray<UsableCredential>
 	target: NeedTarget
-	baseUrl?: string
+	baseUrl: string
 }): Picked {
 	const { kind, provider, match } = input.target
-	const credential = findByName(
-		input.usable,
-		input.pick,
-		input.key,
-		input.baseUrl === undefined
-			? undefined
-			: {
-					baseUrl: input.baseUrl,
-					...(match === 'exact' && kind
-						? { kind, kindMode: 'required' as const }
-						: {}),
-				},
-	)
+	const credential = findByName(input.usable, input.pick, input.key, {
+		baseUrl: input.baseUrl,
+		...(match === 'exact' && kind
+			? { kind, kindMode: 'required' as const }
+			: {}),
+	})
 	if (match === 'exact' && kind && credential.kind !== kind) {
 		throw refusal(
 			'invalid_request',
@@ -707,7 +700,7 @@ export async function validateCredentialCallMap(input: {
 	packageIds: ReadonlyArray<string>
 	strict: boolean
 	/** Origin for creation links on a pick with no match. */
-	baseUrl?: string
+	baseUrl: string
 }): Promise<{ warnings: Array<string> }> {
 	return await withClientErrors(input.baseUrl, async () => {
 		const request = input.request
