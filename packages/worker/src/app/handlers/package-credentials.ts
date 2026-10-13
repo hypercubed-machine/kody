@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
 import {
+	MappingWriteRefused,
 	resolveMappingChanges,
 	writeMappingChanges,
 } from '#worker/credentials/package-credential-mapping-changes.ts'
@@ -119,8 +120,32 @@ export function createPackageCredentialsApiHandler(env: Env) {
 			try {
 				await writeMappingChanges(scope, resolved)
 			} catch (error) {
-				// A trigger someone else turned on between resolve and write.
-				if (!isMcpCallerError(error) || !(error instanceof Error)) throw error
+				if (
+					error instanceof MappingWriteRefused &&
+					error.code !== 'webhook_other_enabler'
+				) {
+					return jsonResponse(
+						{
+							ok: false,
+							errors: [
+								{
+									needKey: error.change.needKey,
+									target: error.change.target,
+									code: error.code,
+									message: error.message,
+								},
+							],
+						} satisfies PackageCredentialsWriteFailure,
+						400,
+					)
+				}
+				// A webhook someone else turned on between resolve and write.
+				if (
+					!(error instanceof MappingWriteRefused) &&
+					!(isMcpCallerError(error) && error instanceof Error)
+				) {
+					throw error
+				}
 				return jsonResponse(
 					{ ok: false, error: error.message },
 					{ status: 409 },

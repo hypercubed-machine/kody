@@ -6,6 +6,7 @@
  */
 import {
 	planTriggerEnablementForCaller,
+	TriggerEnablementError,
 	type DeclaredTrigger,
 } from '#worker/enablements/service.ts'
 import {
@@ -50,6 +51,8 @@ export const maxMappedCredentials = 16
 export type ResolvedMappingChange = CredentialApprovalChangeView & {
 	/** Ordered ids to store; null clears the override. */
 	credentialIds: Array<string> | null
+	/** The stored ids this replaces, usable or not; null when none are stored. */
+	beforeCredentialIds: Array<string> | null
 	/** Where the row lives; null when the trigger has no enablement yet. */
 	rowTarget: CredentialMappingRowTarget | null
 	trigger: DeclaredTrigger | null
@@ -240,6 +243,7 @@ export async function resolveMappingChanges(
 				: null,
 		}
 		let before: Array<CredentialRef> | null = null
+		let beforeCredentialIds: Array<string> | null = null
 		try {
 			if (!need) {
 				refuse(
@@ -252,6 +256,7 @@ export async function resolveMappingChanges(
 				? findStoredRow(scope, need.key, target.rowTarget)
 				: null
 			before = stored ? refsForIds(scope, stored.credentialIds) : null
+			beforeCredentialIds = stored ? [...stored.credentialIds] : null
 			if (change.credentials === null) {
 				return {
 					...base,
@@ -260,6 +265,7 @@ export async function resolveMappingChanges(
 					willEnable: false,
 					error: null,
 					credentialIds: null,
+					beforeCredentialIds,
 					rowTarget: target.rowTarget,
 					trigger: target.trigger,
 				}
@@ -293,6 +299,7 @@ export async function resolveMappingChanges(
 				willEnable: target.willEnable,
 				error: null,
 				credentialIds: unique.map((credential) => credential.id),
+				beforeCredentialIds,
 				rowTarget: target.rowTarget,
 				trigger: target.trigger,
 			}
@@ -305,6 +312,7 @@ export async function resolveMappingChanges(
 				willEnable: false,
 				error: error.error,
 				credentialIds: null,
+				beforeCredentialIds,
 				rowTarget: null,
 				trigger: null,
 			}
@@ -330,7 +338,7 @@ function mappingAuditPlan(
 			needKey: change.needKey,
 			target: change.target,
 			trigger,
-			beforeCredentialIds: change.before?.map((ref) => ref.id) ?? null,
+			beforeCredentialIds: change.beforeCredentialIds,
 			afterCredentialIds: change.credentialIds,
 			willEnable: change.willEnable,
 		},
@@ -338,11 +346,39 @@ function mappingAuditPlan(
 }
 
 /**
+ * A trigger that could not be turned on at write time (it changed since the
+ * changes were resolved). `webhook_other_enabler` is a conflict; the other
+ * codes mean the change no longer applies.
+ */
+export class MappingWriteRefused extends Error {
+	readonly change: ResolvedMappingChange
+	readonly code: TriggerEnablementError['code']
+
+	constructor(change: ResolvedMappingChange, cause: TriggerEnablementError) {
+		super(cause.message)
+		this.name = 'MappingWriteRefused'
+		this.change = change
+		this.code = cause.code
+	}
+}
+
+function changeTargetKey(change: ResolvedMappingChange) {
+	const { target } = change
+	const where =
+		target.type === 'default'
+			? `default:${target.layer}`
+			: `trigger:${target.trigger.kind}:${target.trigger.name}`
+	return `${where}\u0000${change.needKey}`
+}
+
+/**
  * Writes resolved changes in one batch, turning on any trigger a change maps
  * for the first time, and records one `credential.mapping.update` org audit
  * row per written mapping (actor and automation credential from the request;
  * package, trigger, need, and old/new credential ids in details — never
- * values). Every change must have resolved without an error.
+ * values). Every change must have resolved without an error. When one
+ * request edits the same need and target twice, the last edit wins, so a set
+ * then clear never turns a trigger on.
  */
 export async function writeMappingChanges(
 	scope: PackageMappingScope,
@@ -352,6 +388,11 @@ export async function writeMappingChanges(
 	if (resolved.some((change) => change.error)) {
 		throw new Error('Refusing to write mapping changes that have errors.')
 	}
+	const finalChanges = [
+		...new Map(
+			resolved.map((change) => [changeTargetKey(change), change]),
+		).values(),
+	]
 	const db = scope.env.APP_DB
 	const audit = orgAuditWriterFromRequest(scope.env, scope.request)
 	const enableStatements: Array<D1PreparedStatement> = []
@@ -359,7 +400,7 @@ export async function writeMappingChanges(
 	const enabledIds = new Map<DeclaredTrigger, string>()
 	const statements: Array<D1PreparedStatement> = []
 	const auditPlans: Array<OrgAuditOutboxPlan> = []
-	for (const change of resolved) {
+	for (const change of finalChanges) {
 		let rowTarget = change.rowTarget
 		if (!rowTarget && change.willEnable && change.trigger) {
 			let enablementId = enabledIds.get(change.trigger)
@@ -372,6 +413,11 @@ export async function writeMappingChanges(
 					kind: change.trigger.kind,
 					name: change.trigger.name,
 					now,
+				}).catch((error: unknown) => {
+					if (error instanceof TriggerEnablementError) {
+						throw new MappingWriteRefused(change, error)
+					}
+					throw error
 				})
 				if (plan.enablement) {
 					enablementId = plan.enablement.id
@@ -403,13 +449,14 @@ export async function writeMappingChanges(
 		)
 		auditPlans.push(mappingAuditPlan(audit, scope, change))
 	}
-	for (const prepare of prepares) await prepare()
 	const batch = [
 		...enableStatements,
 		...statements,
 		...auditPlans.map((plan) => orgAuditOutboxInsertStatement(db, plan)),
 	]
 	if (batch.length > 0) await db.batch(batch)
+	// After the batch: a rejected write must not leave a new signing secret.
+	for (const prepare of prepares) await prepare()
 	for (const plan of auditPlans) {
 		await commitOrgAuditOutbox({ ...audit, appDb: db }, plan)
 	}
