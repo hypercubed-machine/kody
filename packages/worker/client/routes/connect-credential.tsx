@@ -20,7 +20,6 @@ import {
 	createKeyFormState,
 	credentialCreateAgentPrompt,
 	credentialCreateHandoffHref,
-	credentialCreateKindSummary,
 	credentialCreateMode,
 	credentialCreateTitle,
 	credentialNeedApprovalHref,
@@ -28,16 +27,22 @@ import {
 	expiresAtHasTime,
 	findExistingOrgKey,
 	findMatchingCredentials,
-	isMaskedLoginField,
 	isValueFormKind,
 	keyFormPackageId,
 	keyFormProblem,
 	keyLinkProblem,
 	type KeyFormState,
-	loginFieldNames,
 	type ValueFormKind,
-	writeCredentialCreateKind,
 } from '#client/routes/connect-credential-shared.ts'
+import {
+	renderLoginExchange,
+	renderLoginFields,
+} from '#client/routes/connect-credential-login-fields.tsx'
+import {
+	renderKindList,
+	renderMatches,
+	renderPackageAccess,
+} from '#client/routes/connect-credential-parts.tsx'
 import {
 	type CredentialKind,
 	type CredentialListItem,
@@ -63,12 +68,7 @@ import {
 	pageTitleCss,
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 const accountCredentialsApiPath = routes.accountCredentialsApi.href()
 
@@ -78,38 +78,7 @@ const secondaryButtonCss = getSecondaryButtonCss({
 	weight: 'semibold',
 })
 
-const kindGridCss = {
-	display: 'grid',
-	gap: spacing.sm,
-	gridTemplateColumns: 'repeat(auto-fill, minmax(14rem, 1fr))',
-	margin: 0,
-	padding: 0,
-	border: 'none',
-}
-
-const kindOptionCss = {
-	display: 'grid',
-	gap: spacing.xs,
-	padding: spacing.md,
-	borderRadius: radius.md,
-	border: `1px solid ${colors.border}`,
-	color: colors.text,
-	textDecoration: 'none',
-	'&:hover': { borderColor: colors.primary },
-}
-
-const kindOptionSelectedCss = {
-	...kindOptionCss,
-	borderColor: colors.primary,
-	boxShadow: `inset 0 0 0 1px ${colors.primary}`,
-}
-
 const mutedCss = { margin: 0, color: colors.textMuted }
-const choiceRowCss = {
-	display: 'flex',
-	gap: spacing.sm,
-	alignItems: 'baseline',
-}
 const errorCss = { margin: 0, color: colors.danger }
 const labelHintCss = {
 	fontWeight: typography.fontWeight.normal,
@@ -148,28 +117,6 @@ export async function connectCredentialRouteLoader(
 	return { accountCredentials: payload }
 }
 
-function renderKindOption(input: {
-	kind: CredentialKind
-	selected: boolean
-	href: string
-}) {
-	return (
-		<li key={input.kind} mix={css({ listStyle: 'none' })}>
-			<a
-				href={input.href}
-				aria-current={input.selected ? 'true' : undefined}
-				data-testid={`credential-kind-${input.kind}`}
-				mix={css(input.selected ? kindOptionSelectedCss : kindOptionCss)}
-			>
-				<strong>{credentialKindLabel(input.kind)}</strong>
-				<span mix={css({ color: colors.textMuted })}>
-					{credentialCreateKindSummary(input.kind)}
-				</span>
-			</a>
-		</li>
-	)
-}
-
 function valuePlaceholder(kind: ValueFormKind) {
 	switch (kind) {
 		case 'secret':
@@ -202,42 +149,6 @@ function hostsHint(kind: ValueFormKind) {
 			return exhaustive
 		}
 	}
-}
-
-function renderMatches(input: {
-	matches: ReadonlyArray<CredentialListItem>
-	orgSlug: string
-}) {
-	if (input.matches.length === 0) return null
-	return (
-		<section mix={css(cardCss)} data-testid="connect-credential-matches">
-			<p mix={css({ margin: 0 })}>
-				You already have{' '}
-				{input.matches.length === 1
-					? 'a credential'
-					: `${input.matches.length} credentials`}{' '}
-				from this provider. If one fits, you do not need a new one.
-			</p>
-			<ul mix={css({ margin: 0, paddingLeft: spacing.lg })}>
-				{input.matches.map((credential) => (
-					<li key={credential.id}>
-						<a
-							href={orgResourcePath(
-								input.orgSlug,
-								'credentials',
-								encodeURIComponent(credential.id),
-							)}
-						>
-							{credential.name}
-						</a>{' '}
-						<span mix={css({ color: colors.textMuted })}>
-							({credentialKindLabel(credential.kind)})
-						</span>
-					</li>
-				))}
-			</ul>
-		</section>
-	)
 }
 
 /**
@@ -711,15 +622,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 									: 'What kind of credential is it?'}
 							</p>
 						)}
-						<ul mix={css(kindGridCss)}>
-							{kinds.map((kind) =>
-								renderKindOption({
-									kind,
-									selected: kind === selected,
-									href: writeCredentialCreateKind(href, kind),
-								}),
-							)}
-						</ul>
+						{renderKindList({ kinds, selected, href })}
 					</section>
 
 					{selected === null
@@ -756,301 +659,6 @@ export function ConnectCredentialRoute(handle: Handle) {
 			</AccountManagementShell>
 		)
 	}
-}
-
-function renderLoginFields(input: {
-	state: KeyFormState
-	update: (patch: Partial<KeyFormState>) => void
-}) {
-	const { state, update } = input
-	return (
-		<fieldset
-			mix={css({
-				display: 'grid',
-				gap: spacing.sm,
-				border: 'none',
-				margin: 0,
-				padding: 0,
-			})}
-		>
-			<legend mix={css({ ...fieldLabelCss, padding: 0 })}>Login</legend>
-			{loginFieldNames(state.loginExchange).map((field, index) => {
-				const id = `connect-credential-login-${field}`
-				const setField = (value: string) =>
-					update({ loginFields: { ...state.loginFields, [field]: value } })
-				return (
-					<div key={field} mix={css(fieldCss)}>
-						<label for={id} mix={css(fieldLabelCss)}>
-							{field.charAt(0).toUpperCase() + field.slice(1)}
-						</label>
-						{isMaskedLoginField(field) ? (
-							<PasswordRevealInput
-								id={id}
-								required
-								{...passwordManagerIgnoreProps}
-								value={state.loginFields[field] ?? ''}
-								revealNoun={field}
-								mix={[
-									css(inputCss),
-									on('input', (event) => setField(event.currentTarget.value)),
-								]}
-							/>
-						) : (
-							<input
-								id={id}
-								required
-								autoFocus={index === 0 && Boolean(state.name)}
-								{...passwordManagerIgnoreProps}
-								value={state.loginFields[field] ?? ''}
-								mix={[
-									css(inputCss),
-									on('input', (event) => setField(event.currentTarget.value)),
-								]}
-							/>
-						)}
-					</div>
-				)
-			})}
-			<span mix={css(mutedCss)}>
-				Only Kody sees these. Agents and package code get a session token, never
-				your login.
-			</span>
-		</fieldset>
-	)
-}
-
-function renderPackageAccess(input: {
-	state: KeyFormState
-	packages: AccountCredentialsResponse['packages']
-	update: (patch: Partial<KeyFormState>) => void
-}) {
-	const { state, packages, update } = input
-	const known = new Set(packages.map((entry) => entry.id))
-	const unknownLocks = state.allowedPackages.filter((id) => !known.has(id))
-	const toggleLock = (id: string, checked: boolean) =>
-		update({
-			allowedPackages: checked
-				? [...new Set([...state.allowedPackages, id])]
-				: state.allowedPackages.filter((entry) => entry !== id),
-		})
-	return (
-		<fieldset
-			data-testid="connect-credential-package-access"
-			mix={css({ ...fieldCss, border: 'none', margin: 0, padding: 0 })}
-		>
-			<legend mix={css(fieldLabelCss)}>Which packages can read it</legend>
-			<label mix={css(choiceRowCss)}>
-				<input
-					type="radio"
-					name="connect-credential-package-scope"
-					checked={state.packageScope === 'org'}
-					mix={on('change', () => update({ packageScope: 'org' }))}
-				/>
-				<span>
-					Packages in this org (lock it to some below, or leave it open)
-				</span>
-			</label>
-			<label mix={css(choiceRowCss)}>
-				<input
-					type="radio"
-					name="connect-credential-package-scope"
-					checked={state.packageScope === 'package'}
-					disabled={packages.length === 0}
-					mix={on('change', () => update({ packageScope: 'package' }))}
-				/>
-				<span>
-					One package only (a package key that no other package or agent code
-					reads)
-				</span>
-			</label>
-			{state.packageScope === 'package' ? (
-				<select
-					aria-label="Package that owns this key"
-					value={state.packageId}
-					mix={[
-						css(inputCss),
-						on('change', (event) =>
-							update({ packageId: event.currentTarget.value }),
-						),
-					]}
-				>
-					<option value="">Choose a package</option>
-					{packages.map((entry) => (
-						<option key={entry.id} value={entry.id}>
-							{entry.kodyId}
-						</option>
-					))}
-				</select>
-			) : packages.length > 0 || unknownLocks.length > 0 ? (
-				<div
-					role="group"
-					aria-label="Lock to packages"
-					mix={css({ display: 'grid', gap: spacing.xs })}
-				>
-					{packages.map((entry) => (
-						<label key={entry.id} mix={css(choiceRowCss)}>
-							<input
-								type="checkbox"
-								checked={state.allowedPackages.includes(entry.id)}
-								mix={on('change', (event) =>
-									toggleLock(entry.id, event.currentTarget.checked),
-								)}
-							/>
-							<span>
-								Lock to <code>{entry.kodyId}</code>
-							</span>
-						</label>
-					))}
-					{unknownLocks.map((id) => (
-						<label key={id} mix={css(choiceRowCss)}>
-							<input
-								type="checkbox"
-								checked
-								mix={on('change', (event) =>
-									toggleLock(id, event.currentTarget.checked),
-								)}
-							/>
-							<span>
-								Lock to package <code>{id}</code>{' '}
-								<span mix={css({ color: colors.textMuted })}>
-									(not found in this org)
-								</span>
-							</span>
-						</label>
-					))}
-					<span mix={css(mutedCss)}>
-						A locked key is readable only by the packages you check. With none
-						checked, any package in this org can use it.
-					</span>
-				</div>
-			) : null}
-		</fieldset>
-	)
-}
-
-function renderLoginExchange(input: {
-	state: KeyFormState
-	update: (patch: Partial<KeyFormState>) => void
-}) {
-	const { state, update } = input
-	const exchange = state.loginExchange
-	const setExchange = (patch: Partial<KeyFormState['loginExchange']>) =>
-		update({ loginExchange: { ...exchange, ...patch } })
-	let exchangeHost: string | null = null
-	try {
-		exchangeHost = exchange.url ? new URL(exchange.url).host : null
-	} catch {
-		exchangeHost = null
-	}
-	return (
-		<details
-			open={!exchangeHost || !exchange.tokenPath}
-			data-testid="connect-credential-login-exchange"
-			mix={css({ display: 'grid', gap: spacing.sm })}
-		>
-			<summary mix={css({ cursor: 'pointer' })}>
-				{exchangeHost && exchange.tokenPath ? (
-					<>
-						Kody sends your login to <code>{exchangeHost}</code> and reads the
-						session token from <code>{exchange.tokenPath}</code>.
-					</>
-				) : (
-					'How Kody logs in'
-				)}
-			</summary>
-			<div
-				mix={css({ display: 'grid', gap: spacing.md, paddingTop: spacing.sm })}
-			>
-				<div mix={css(fieldCss)}>
-					<label for="connect-credential-exchange-url" mix={css(fieldLabelCss)}>
-						Login URL
-					</label>
-					<input
-						id="connect-credential-exchange-url"
-						type="url"
-						required
-						value={exchange.url}
-						placeholder="https://api.example.com/login"
-						mix={[
-							css(inputCss),
-							on('input', (event) =>
-								setExchange({ url: event.currentTarget.value }),
-							),
-						]}
-					/>
-				</div>
-				<div mix={css(fieldCss)}>
-					<label
-						for="connect-credential-exchange-format"
-						mix={css(fieldLabelCss)}
-					>
-						Sent as
-					</label>
-					<select
-						id="connect-credential-exchange-format"
-						value={exchange.bodyFormat}
-						mix={[
-							css(inputCss),
-							on('change', (event) =>
-								setExchange({
-									bodyFormat:
-										event.currentTarget.value === 'form' ? 'form' : 'json',
-								}),
-							),
-						]}
-					>
-						<option value="json">JSON</option>
-						<option value="form">Form fields</option>
-					</select>
-				</div>
-				<div mix={css(fieldCss)}>
-					<label
-						for="connect-credential-exchange-body"
-						mix={css(fieldLabelCss)}
-					>
-						Request body{' '}
-						<span mix={css(labelHintCss)}>
-							(JSON; <code>{'{username}'}</code> is replaced by that login
-							field)
-						</span>
-					</label>
-					<textarea
-						id="connect-credential-exchange-body"
-						rows={2}
-						required
-						value={exchange.body}
-						mix={[
-							css(inputCss),
-							on('input', (event) =>
-								setExchange({ body: event.currentTarget.value }),
-							),
-						]}
-					/>
-				</div>
-				<div mix={css(fieldCss)}>
-					<label
-						for="connect-credential-exchange-token"
-						mix={css(fieldLabelCss)}
-					>
-						Token path{' '}
-						<span mix={css(labelHintCss)}>(where the response holds it)</span>
-					</label>
-					<input
-						id="connect-credential-exchange-token"
-						required
-						value={exchange.tokenPath}
-						placeholder="data.token"
-						mix={[
-							css(inputCss),
-							on('input', (event) =>
-								setExchange({ tokenPath: event.currentTarget.value }),
-							),
-						]}
-					/>
-				</div>
-			</div>
-		</details>
-	)
 }
 
 function renderKindBody(input: {
