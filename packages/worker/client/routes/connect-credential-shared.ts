@@ -168,7 +168,7 @@ export function parseHostsInput(text: string) {
  * The creation link's `loginExchange` param: the JSON `login_exchange` a
  * package's login need expects, so the person only types their login fields.
  */
-export const loginExchangeParam = 'loginExchange'
+const loginExchangeParam = 'loginExchange'
 
 export type LoginExchangeForm = {
 	url: string
@@ -210,7 +210,7 @@ function readLoginExchangeParam(
 }
 
 /** Who can read a Key: any package the locks allow, or one package only. */
-export type KeyPackageScope = 'org' | 'package'
+type KeyPackageScope = 'org' | 'package'
 
 export type KeyFormState = {
 	name: string
@@ -233,7 +233,7 @@ export type KeyFormState = {
 }
 
 /** A link's `expiresAt` as canonical UTC ISO, null when absent, or 'invalid'. */
-export function readLinkExpiresAt(raw: string | null): string | null {
+function readLinkExpiresAt(raw: string | null): string | null {
 	if (!raw) return null
 	try {
 		return normalizeSecretExpiresAt(raw) ?? null
