@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { type CredentialListItem } from '#universal/credential-contracts.ts'
 import {
 	credentialManageHref,
+	credentialsDataKey,
 	writeCredentialListFilters,
 } from './account-credentials-shared.ts'
 
@@ -68,5 +69,17 @@ test('filters write into the page URL without touching its path', () => {
 	).toBe('/@acme/-/credentials?q=git&scope=personal')
 	expect(writeCredentialListFilters('/@acme/-/credentials?q=x', {})).toBe(
 		'/@acme/-/credentials',
+	)
+})
+
+test('each org keeps its own cached list and selection, whatever the filters', () => {
+	expect(credentialsDataKey('/@acme/-/credentials?kind=secret')).toBe(
+		credentialsDataKey('/@acme/-/credentials'),
+	)
+	expect(credentialsDataKey('/@acme/-/credentials')).not.toBe(
+		credentialsDataKey('/@jane/-/credentials'),
+	)
+	expect(credentialsDataKey('/@acme/-/credentials/cred-1?kind=secret')).toBe(
+		'/account/credentials?org=acme&selected=cred-1',
 	)
 })
