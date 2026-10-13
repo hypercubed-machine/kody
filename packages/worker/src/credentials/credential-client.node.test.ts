@@ -523,6 +523,18 @@ test('an unbound link selects a built-in OAuth app, and kinds with no form point
 		ownerId: t.acmeId,
 		name: '@acme/hooks',
 	})
+	mockNeeds([{ key: 'github', kind: 'oauth', provider: 'github' }])
+	const declaredOauth = await rejection(
+		openCredentialClient(t.contextFor({ request: bea, packageId }), {
+			key: 'github',
+		}),
+	)
+	const declaredOauthUrl = new URL(
+		(declaredOauth.body as { createUrl: string }).createUrl,
+	)
+	expect(declaredOauthUrl.searchParams.get('kindMode')).toBe('required')
+	expect(declaredOauthUrl.searchParams.get('platform')).toBe('github')
+
 	mockNeeds([{ key: 'deploy-hook', kind: 'url', provider: 'vercel' }])
 	const urlNeed = await rejection(
 		openCredentialClient(t.contextFor({ request: bea, packageId }), {
@@ -856,6 +868,7 @@ test('a call map is validated before code runs: unknown keys fail an invoke and 
 			map: normalizeCredentialCallMap(credentials)!,
 			packageIds,
 			strict,
+			baseUrl: 'https://example.com',
 		})
 	await expect(validate({ MAIL: 'resend-prod' }, true)).resolves.toEqual({
 		warnings: [],
@@ -872,7 +885,12 @@ test('a call map is validated before code runs: unknown keys fail an invoke and 
 	])
 	await expect(
 		rejection(validate({ MAIL: 'missing' }, true)),
-	).resolves.toMatchObject({ body: { code: 'credential_not_found' } })
+	).resolves.toMatchObject({
+		body: {
+			code: 'credential_not_found',
+			createUrl: 'https://example.com/connect/credential?name=missing',
+		},
+	})
 	await expect(
 		rejection(
 			validateCredentialCallMap({

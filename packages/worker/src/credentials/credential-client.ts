@@ -286,7 +286,7 @@ async function createUrlForNeed(
 		? input.provider
 		: null
 	const [builtInOauth, saved] = await Promise.all([
-		!declaredKind && providerSlug
+		(declaredKind === null || declaredKind === 'oauth') && providerSlug
 			? getDiscoverablePlatformOauthApp({
 					db: ctx.env.APP_DB,
 					slug: providerSlug,
@@ -652,8 +652,10 @@ export async function validateCredentialCallMap(input: {
 	map: CredentialCallMap
 	packageIds: ReadonlyArray<string>
 	strict: boolean
+	/** Origin for creation links on a pick with no match. */
+	baseUrl?: string
 }): Promise<{ warnings: Array<string> }> {
-	return await withClientErrors(undefined, async () => {
+	return await withClientErrors(input.baseUrl, async () => {
 		const request = input.request
 		if (!request?.actor) {
 			throw refusal(
@@ -688,7 +690,7 @@ export async function validateCredentialCallMap(input: {
 			}
 			const target = needTarget(key, need)
 			for (const pick of picks) {
-				pickExplicit({ key, pick, usable, target })
+				pickExplicit({ key, pick, usable, target, baseUrl: input.baseUrl })
 			}
 		}
 		return { warnings }
