@@ -158,15 +158,18 @@ credentials; opt-in types that a package can declare are described in
   64). Prefer naming a slot after its provider (`github`, `resend`); publish
   adds an informational note for a key that is not a provider slug
   (`^[a-z0-9-]+$`) and never fails for it.
-- `kind` is required (`secret`, `oauth`, `mcp`, or the opt-in types `url`,
-  `login`, and `signing`). `provider` is optional and defaults to the key; a
-  second account from the same provider gets its own key with an explicit
-  `provider`. `description` is required, never affects matching, and says why
-  the package wants access. `multiple: true` means the package uses several
-  accounts at once. A typical need looks like
-  `"github": { "kind": "oauth", "description": "Read PRs to summarize them" }`.
-  ADR 0068's accepted design allows omitting `kind` for any fetch-capable
-  credential; publish matching requires it.
+- `kind` is optional
+  ([ADR 0068 amendment 2026-10-12](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-12)):
+  omit it for any fetch-capable credential for that provider (Key/secret such as
+  a PAT, oauth, login); declare it only when a specific shape is needed
+  (`secret`, `oauth`, `mcp`, or the opt-in types `url`, `login`, and `signing`).
+  When `kind` is omitted, matching accepts any fetch-capable credential for the
+  provider; a declared `kind` keeps today's narrowing. `provider` is optional
+  and defaults to the key; a second account from the same provider gets its own
+  key with an explicit `provider`. `description` is required, never affects
+  matching, and says why the package wants access. `multiple: true` means the
+  package uses several accounts at once. A typical need looks like
+  `"github": { "description": "Read PRs to summarize them" }`.
 - Publish rejects any other key or a missing required field and names the slot.
   If a later rule rejects a slot in a version that is already published, the
   package still loads with its other slots.
@@ -174,15 +177,16 @@ credentials; opt-in types that a package can declare are described in
   the packages it statically imports through `kody:@`, as they were at this
   publish. A key that the package and a dependency declare with a different
   `kind` or `provider` fails the publish and names both; give one a different
-  key.
+  key. Omitting `kind` is compatible with a dependency that declares a
+  fetch-capable kind (the declared kind is kept).
 - `packageGet` returns that closure as `credentials.needs`, each need with how
   it resolves for you: `status` is `ready` (exactly one credential you can Use
-  has the need's kind and provider; `autoPick` names it), `ambiguous` (several
-  do), or `unbound` (none). `yourOptions` lists what you could pick (name, `org`
-  or `personal` scope, hosts): the matches plus same-kind credentials with no
-  provider, which resolve automatically once their provider is set
-  (`credentialUpdate`). Only credentials you can Use are listed, and needs
-  inherited from a dependency carry `from`.
+  matches the need's kind filter and provider; `autoPick` names it), `ambiguous`
+  (several do), or `unbound` (none). `yourOptions` lists what you could pick
+  (name, `org` or `personal` scope, hosts): the matches plus matching-kind
+  credentials with no provider, which resolve automatically once their provider
+  is set (`credentialUpdate`). Only credentials you can Use are listed, and
+  needs inherited from a dependency carry `from`.
 - Slots take no `placement`. Publish rejects one with a message to remove it.
   Published versions that include it load with it ignored. The fetch gateway
   fills `{{secret:NAME}}` and `{{integration-token:NAME}}` anywhere in a request
@@ -251,13 +255,15 @@ list in their output, and `packagePublishExternalPush` includes the result in
 `checks`. It never fails a check or blocks a publish. The labels are described
 in
 [package codemods](../contributing/package-codemods.md#0010-detect-legacy-credential-patterns).
-When the list is shown, it may end with optional credential types that fit where
-the placeholders sit: a Key with an inject for header, query, or basic auth
-placeholders; an OAuth connection's `credential(key)` for integration token
-headers; a `url` credential for path or whole-URL placeholders; a `login`
-credential for password or token exchange bodies; and a `signing` credential for
-`secretJwtSign` or signature keys. They are suggestions only, without credential
-names; nothing is suggested for a placement no type fits.
+When the list is shown, it may end with optional credential types that fit
+placeholders the list did not already cover with a declared slot: a Key with an
+inject for header or query placeholders; an OAuth connection's `credential(key)`
+for an integration token sent as `Authorization: Bearer`; a `url` credential for
+path or whole-URL placeholders; a `login` credential for a password, refresh
+token, or client secret field on a login or token exchange; and a `signing`
+credential for `secretJwtSign` or signature keys. They are suggestions only,
+without credential names; nothing is suggested for a placement no type fits,
+including basic auth that names two secrets.
 
 ### npm dependencies
 
@@ -803,6 +809,13 @@ badge. Owners click it to open
 resolved default-branch HEAD, and publish that SHA with **Publish HEAD**.
 Visitors see the badge but not the link. The five-minute reconcile job still
 auto-publishes unlocked packages; this page is the explicit website path.
+
+Publishing or promoting does **not** move a public community listing. The
+catalog pin stays on the last `communityPublish` until you republish — see
+[Listing vs publish and promote](./community-packages.md#listing-vs-publish-and-promote).
+`packagePublishExternalPush` success results include a `listing` hint when the
+listing is behind; the promote page and Repo tab offer **Update public
+listing**.
 
 Fleet package-codemod apply for `head-and-published` codemods does the same HEAD
 write on locked packages: the transform commits and pushes so you can review it

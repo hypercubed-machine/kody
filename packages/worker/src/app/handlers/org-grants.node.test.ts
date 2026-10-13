@@ -179,6 +179,7 @@ test('grants list includes outside collaborator grants; collaborators page lists
 	expect(grantsPayload.grants).toHaveLength(1)
 	expect(grantsPayload.grants[0]?.subjectLabel).toBe('@dan')
 	expect(grantsPayload.grants[0]?.presetLabel).toBe('Use')
+	expect(grantsPayload.grants[0]).toMatchObject({ canRevoke: true })
 
 	const collabReq = new Request(
 		'https://kody.test/@zeta-co/-/collaborators.json',
@@ -204,6 +205,93 @@ test('grants list includes outside collaborator grants; collaborators page lists
 			}),
 		],
 	})
+})
+
+test('member:write without manage access on the resource cannot revoke; owner can', async () => {
+	const env = createEnv()
+	const now = '2026-01-01T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO grants (
+			   id, org_id, resource_type, resource_id, subject_type, subject_id,
+			   created_by_user_id, created_at, updated_at
+			 ) VALUES ('grant-bob-member-write', ?, 'org', ?, 'user', ?, ?, ?, ?)`,
+		)
+		.run(acmeId, acmeId, people.bob.personId, people.ada.personId, now, now)
+	sqlite
+		.prepare(
+			`INSERT INTO grant_permissions (grant_id, permission)
+			 VALUES ('grant-bob-member-write', 'member:write')`,
+		)
+		.run()
+
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants.json')
+	await signIn('bob', listReq)
+	const listed = await createOrgGrantsApiHandler(env).handler({
+		request: listReq,
+	} as never)
+	expect(listed.status).toBe(200)
+	const listedPayload = (await listed.json()) as {
+		canManage: boolean
+		grants: Array<{ id: string; canRevoke: boolean }>
+	}
+	expect(listedPayload.canManage).toBe(true)
+	expect(listedPayload.grants).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ id: 'grant-1', canRevoke: false }),
+			expect.objectContaining({
+				id: 'grant-bob-member-write',
+				canRevoke: true,
+			}),
+		]),
+	)
+
+	const revokeReq = new Request(
+		'https://kody.test/@zeta-co/-/grants/revoke.json',
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ grantId: 'grant-1' }),
+		},
+	)
+	await signIn('bob', revokeReq)
+	const denied = await createOrgGrantsRevokePostHandler(env).handler({
+		request: revokeReq,
+	} as never)
+	expect(denied.status).toBe(403)
+	const deniedPayload = (await denied.json()) as { ok: false; error: string }
+	expect(deniedPayload.ok).toBe(false)
+	expect(deniedPayload.error).toMatch(/package:manage_access/)
+	const stillLive = await db
+		.prepare(
+			`SELECT deleted_at FROM grants WHERE id = 'grant-1' AND org_id = ?`,
+		)
+		.bind(acmeId)
+		.first<{ deleted_at: string | null }>()
+	expect(stillLive?.deleted_at).toBeNull()
+
+	const ownerReq = new Request(
+		'https://kody.test/@zeta-co/-/grants/revoke.json',
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ grantId: 'grant-1' }),
+		},
+	)
+	await signIn('ada', ownerReq)
+	const revoked = await createOrgGrantsRevokePostHandler(env).handler({
+		request: ownerReq,
+	} as never)
+	expect(revoked.status).toBe(200)
+	const payload = (await revoked.json()) as { grants: Array<{ id: string }> }
+	expect(payload.grants.map((grant) => grant.id)).not.toContain('grant-1')
+	const gone = await db
+		.prepare(
+			`SELECT deleted_at FROM grants WHERE id = 'grant-1' AND org_id = ?`,
+		)
+		.bind(acmeId)
+		.first<{ deleted_at: string | null }>()
+	expect(gone?.deleted_at).not.toBeNull()
 })
 
 test('owner can revoke a grant', async () => {
@@ -249,7 +337,9 @@ test('personal org owner can list and revoke grants', async () => {
 		grants: Array<{ id: string }>
 	}
 	expect(listPayload.canManage).toBe(true)
-	expect(listPayload.grants.map((g) => g.id)).toContain('grant-personal-1')
+	expect(listPayload.grants).toContainEqual(
+		expect.objectContaining({ id: 'grant-personal-1', canRevoke: true }),
+	)
 
 	const revokeReq = new Request('https://kody.test/@ada/-/grants/revoke.json', {
 		method: 'POST',

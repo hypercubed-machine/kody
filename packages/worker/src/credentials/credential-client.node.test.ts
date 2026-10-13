@@ -547,6 +547,51 @@ test('an unbound link selects a built-in OAuth app, and kinds with no form point
 	expect(urlNeed.message).toMatch(/Create one at https:\/\/\S+kind=url/)
 })
 
+test('a declared need with no kind opens any fetch-capable credential for the provider', async () => {
+	const t = await setup()
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/pr-summary',
+	})
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		{
+			key: 'github',
+			provider: 'github',
+			description: 'Read PRs to summarize them',
+			multiple: false,
+		},
+	])
+	await t.storeKey({
+		name: 'gh-pat',
+		provider: 'github',
+		hosts: ['api.github.com'],
+	})
+	const ctx = t.contextFor({
+		request: t.requestAs('bea', 'owner'),
+		packageId,
+	})
+	await expect(
+		openCredentialClient(ctx, { key: 'github' }),
+	).resolves.toMatchObject({
+		key: 'github',
+		name: 'gh-pat',
+		kind: 'secret',
+	})
+
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		{
+			key: 'github',
+			kind: 'oauth',
+			provider: 'github',
+			description: 'OAuth only',
+			multiple: false,
+		},
+	])
+	await expect(
+		rejection(openCredentialClient(ctx, { key: 'github' })),
+	).resolves.toMatchObject({ body: { code: 'credential_unbound' } })
+})
+
 test('credential.named works in ad hoc code and unshared personal packages only', async () => {
 	const t = await setup()
 	await t.storeKey({ name: 'resend-prod' })
