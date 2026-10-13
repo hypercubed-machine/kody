@@ -225,6 +225,28 @@ export function sortNeedsByAttention(
 	)
 }
 
+/**
+ * The API withholds a trigger's mappings whenever someone else's enablement
+ * owns it, in every state, so an empty list there is not "no overrides".
+ */
+export function withheldTriggerMappingsNote(trigger: PackageTriggerView) {
+	const enablement = trigger.enablement
+	if (!enablement || enablement.enabledByYou) return null
+	const state = enablement.state
+	switch (state) {
+		case 'on':
+			return 'Someone else turned this trigger on, so its credential mappings are theirs.'
+		case 'paused':
+			return 'Someone else turned this trigger on (it is paused), so its credential mappings are theirs.'
+		case 'off':
+			return 'Someone else set up this trigger (it is off), so its credential mappings are theirs.'
+		default: {
+			const exhaustive: never = state
+			return exhaustive
+		}
+	}
+}
+
 export function triggerStateLabel(trigger: PackageTriggerView) {
 	if (!trigger.enablement) {
 		return trigger.trigger.kind === 'webhook' && trigger.instanceId === null

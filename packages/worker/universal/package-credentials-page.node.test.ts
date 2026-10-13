@@ -13,6 +13,7 @@ import {
 	readPackageCredentialsTabPath,
 	sortNeedsByAttention,
 	triggerStateLabel,
+	withheldTriggerMappingsNote,
 } from './package-credentials-page.ts'
 
 const acmeBot: CredentialRef = {
@@ -143,6 +144,37 @@ test('trigger state names who turned it on and unminted webhooks', () => {
 			}),
 		),
 	).toBe('On by you')
+})
+
+test('mappings under someone else’s enablement read as withheld in every state', () => {
+	const hook = { kind: 'webhook', name: 'hook' } as const
+	expect(
+		withheldTriggerMappingsNote(
+			trigger({
+				trigger: hook,
+				enablement: { id: 'en', state: 'off', enabledByYou: false },
+			}),
+		),
+	).toBe(
+		'Someone else set up this trigger (it is off), so its credential mappings are theirs.',
+	)
+	expect(
+		withheldTriggerMappingsNote(
+			trigger({
+				trigger: hook,
+				enablement: { id: 'en', state: 'paused', enabledByYou: false },
+			}),
+		),
+	).toContain('(it is paused)')
+	expect(
+		withheldTriggerMappingsNote(
+			trigger({
+				trigger: hook,
+				enablement: { id: 'en', state: 'off', enabledByYou: true },
+			}),
+		),
+	).toBeNull()
+	expect(withheldTriggerMappingsNote(trigger({ trigger: hook }))).toBeNull()
 })
 
 test('credential refs link to the org credential detail by id', () => {

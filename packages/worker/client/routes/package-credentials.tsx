@@ -93,27 +93,57 @@ export function PackageCredentialsRoute(handle: Handle) {
 		key: 'packageCredentials',
 		fromLoaderData: (payload) => payload,
 		async load(href, signal) {
+			const writesAtStart = writes
 			const result = await loadPackageCredentialsPage(href, signal)
-			return result.kind === 'redirect'
-				? routeDataRedirect(result.to)
-				: result.data
+			if (result.kind === 'redirect') return routeDataRedirect(result.to)
+			if (result.data?.ok && result.data.view) {
+				fetchedAfterWrites.set(result.data.view, writesAtStart)
+			}
+			return result.data
 		},
 	})
 
 	let page = { username: '', kodyId: '', orgSlug: '' }
 	let baseView: PackageCredentialsView | null = null
-	let saved: {
-		base: PackageCredentialsView
-		view: PackageCredentialsView
-	} | null = null
+	let editorPathname: string | null = null
+	let writes = 0
+	/** Writes that had landed when each view's GET started. */
+	const fetchedAfterWrites = new WeakMap<PackageCredentialsView, number>()
+	/**
+	 * The latest saved view, shown until a GET that started after that write
+	 * lands; a GET already in flight (or router loader data) may predate it.
+	 */
+	let saved: { view: PackageCredentialsView; writes: number } | null = null
+	let reloadRequestedFor: PackageCredentialsView | null = null
 	const editor = createPackageMappingEditor(handle, {
 		readPage: () => page,
 		onSaved(view) {
 			if (baseView && baseView.package.id === view.package.id) {
-				saved = { base: baseView, view }
+				writes += 1
+				saved = { view, writes }
+				handle.update()
 			}
 		},
 	})
+
+	function currentView(
+		loaded: PackageCredentialsView | null,
+		currentHref: string,
+		pending: boolean,
+	) {
+		if (!loaded || !saved || saved.view.package.id !== loaded.package.id) {
+			return loaded
+		}
+		if ((fetchedAfterWrites.get(loaded) ?? -1) >= saved.writes) {
+			saved = null
+			return loaded
+		}
+		if (!pending && reloadRequestedFor !== loaded) {
+			reloadRequestedFor = loaded
+			pageData.reload(handle, currentHref)
+		}
+		return saved.view
+	}
 
 	return () => {
 		const currentHref = readCurrentRouterHref(handle)
@@ -133,15 +163,13 @@ export function PackageCredentialsRoute(handle: Handle) {
 		const username = shell?.username ?? path.username
 		const kodyId = shell?.kodyId ?? path.kodyId
 		page = { username, kodyId, orgSlug: username }
-		if (data?.view !== baseView) {
-			baseView = data?.view ?? null
+		baseView = data?.view ?? null
+		if (pathname !== editorPathname) {
+			editorPathname = pathname
 			editor.reset()
 		}
-		const view =
-			data?.view && saved?.base === data.view
-				? saved.view
-				: (data?.view ?? null)
 		const pending = snapshot.kind === 'pending'
+		const view = currentView(data?.view ?? null, currentHref, pending)
 		const statusMessage =
 			snapshot.kind === 'error'
 				? 'Unable to load this package.'
