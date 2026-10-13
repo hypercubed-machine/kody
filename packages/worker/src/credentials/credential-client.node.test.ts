@@ -522,9 +522,7 @@ test('an unbound link selects a built-in OAuth app, and kinds with no form point
 			key: 'deploy-hook',
 		}),
 	)
-	expect(urlNeed.message).toContain(
-		'To create it, call secretSet with kind "url" and provider "vercel".',
-	)
+	expect(urlNeed.message).not.toContain('secretSet')
 	expect(urlNeed.message).toMatch(/Create one at https:\/\/\S+kind=url/)
 })
 
