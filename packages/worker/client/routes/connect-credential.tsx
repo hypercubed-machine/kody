@@ -21,6 +21,7 @@ import {
 	credentialCreateKindSummary,
 	credentialCreateMode,
 	credentialCreateTitle,
+	credentialNeedApprovalHref,
 	findExistingOrgKey,
 	findMatchingCredentials,
 	isMaskedLoginField,
@@ -306,6 +307,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 		state: KeyFormState
 		existing: CredentialListItem | null
 		orgSlug: string
+		forNeed: { packageKodyId: string; needKey: string } | null
 		prompt: (error: string) => string
 	}) {
 		const { kind, state, existing } = input
@@ -316,12 +318,30 @@ export function ConnectCredentialRoute(handle: Handle) {
 		}
 		if (savedName) {
 			const saved = findExistingOrgKey(data?.credentials ?? [], savedName)
+			const approvalHref =
+				saved && input.forNeed
+					? credentialNeedApprovalHref({
+							orgSlug: input.orgSlug,
+							...input.forNeed,
+							credentialId: saved.id,
+						})
+					: null
 			return (
 				<section mix={css(cardCss)} data-testid="connect-credential-saved">
 					<p mix={css({ margin: 0 })}>
 						<strong>{savedName}</strong> is saved. Return to your agent and
 						continue.
 					</p>
+					{approvalHref && input.forNeed ? (
+						<p mix={css({ margin: 0 })}>
+							If <code>{input.forNeed.packageKodyId}</code> should always use it
+							for <code>{input.forNeed.needKey}</code>,{' '}
+							<a href={approvalHref} data-testid="connect-credential-approve">
+								make it your default
+							</a>
+							.
+						</p>
+					) : null}
 					{saved ? (
 						<a
 							href={orgResourcePath(
@@ -628,6 +648,13 @@ export function ConnectCredentialRoute(handle: Handle) {
 									state,
 									existing,
 									orgSlug,
+									forNeed:
+										query.packageKodyId && query.needKey
+											? {
+													packageKodyId: query.packageKodyId,
+													needKey: query.needKey,
+												}
+											: null,
 									prompt: (error) =>
 										credentialCreateAgentPrompt({
 											kind,

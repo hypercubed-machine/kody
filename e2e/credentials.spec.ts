@@ -110,6 +110,12 @@ test('the creation link saves Key, URL, and login credentials from their prefill
 		'DIGEST_KEY is saved',
 	)
 	await expect(page.getByText(value)).toHaveCount(0)
+	await expect(page.getByTestId('connect-credential-approve')).toHaveAttribute(
+		'href',
+		new RegExp(
+			`^/@${user.username}/pr-digest/approve-credentials\\?mine%5Bemail%5D=id%3A[^&]+$`,
+		),
+	)
 
 	await page.getByRole('link', { name: 'View credential' }).click()
 	const pane = page.getByRole('region', { name: 'DIGEST_KEY details' })

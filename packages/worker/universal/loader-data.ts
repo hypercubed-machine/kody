@@ -21,6 +21,7 @@ import {
 } from '#universal/community-categories.ts'
 import { type CommunityListingSort } from '#universal/community-search.ts'
 import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
+import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
 import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
@@ -2663,6 +2664,7 @@ export type AppLoaderData = {
 	accountPackageApproveCapabilities?: AccountPackageApproveCapabilitiesLoaderData
 	accountCredentials?: AccountCredentialsResponse
 	packageCredentials?: PackageCredentialsLoaderData
+	packageCredentialApproval?: PackageCredentialApprovalLoaderData
 	accountSecrets?: AccountSecretsLoaderData
 	accountSecretProviders?: AccountSecretProvidersLoaderData
 	accountValues?: AccountValuesLoaderData

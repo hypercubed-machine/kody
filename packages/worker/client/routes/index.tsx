@@ -185,6 +185,10 @@ export const clientRouteLoaders: Record<string, RouteLoader> = {
 		communityArea,
 		(m) => m.packageCredentialsRouteLoader,
 	),
+	[routePattern(routes.communityPackageApproveCredentials)]: lazyRouteLoader(
+		communityArea,
+		(m) => m.packageCredentialApprovalRouteLoader,
+	),
 	[routePattern(routes.communityDetailFiles)]: lazyRouteLoader(
 		packageFilesArea,
 		(m) => m.packageFilesRouteLoader,
@@ -400,6 +404,9 @@ export const clientRoutes = {
 	),
 	[routePattern(routes.communityPackageTriggers)]: (
 		<LazyCommunityRoute render={(m) => <m.PackageCredentialsRoute />} />
+	),
+	[routePattern(routes.communityPackageApproveCredentials)]: (
+		<LazyCommunityRoute render={(m) => <m.PackageCredentialApprovalRoute />} />
 	),
 	[routePattern(routes.communityDetailFiles)]: (
 		<LazyPackageFilesRoute render={(m) => <m.PackageFilesRoute />} />

@@ -10,6 +10,7 @@ import {
 	credentialCreateAgentPrompt,
 	credentialCreateHandoffHref,
 	credentialCreateMode,
+	credentialNeedApprovalHref,
 	findExistingOrgKey,
 	findMatchingCredentials,
 	isMaskedLoginField,
@@ -280,4 +281,16 @@ test('the agent prompt names the kind, credential, need, link, and error', () =>
 			'Help me fix the link or the form. Do not ask me to paste the value into chat.',
 		].join('\n'),
 	)
+})
+
+test('a saved credential for a package need links to approve it as your default', () => {
+	const href = credentialNeedApprovalHref({
+		orgSlug: 'acme',
+		packageKodyId: 'pr-digest',
+		needKey: 'github',
+		credentialId: 'cred 1',
+	})
+	const url = new URL(href, 'https://kody.codes')
+	expect(url.pathname).toBe('/@acme/pr-digest/approve-credentials')
+	expect([...url.searchParams]).toEqual([['mine[github]', 'id:cred 1']])
 })

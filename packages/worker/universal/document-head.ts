@@ -252,6 +252,9 @@ const routeDocumentHeads = {
 	[routePattern(routes.orgBillingSuccess)]: titleOnly("You're in"),
 	[routePattern(routes.accountUsage)]: titleOnly('Usage'),
 	[routePattern(routes.accountExperiments)]: titleOnly('Experiments'),
+	[routePattern(routes.communityPackageApproveCredentials)]: titleOnly(
+		'Approve credential mappings',
+	),
 	[routePattern(routes.communityPackageApprovePublish)]: titleOnly(
 		'Approve package publish',
 	),

@@ -286,6 +286,9 @@ export const routes = route({
 	communityPackageCredentials: '/@:username/:kodyId/credentials',
 	communityPackageMappings: '/@:username/:kodyId/mappings',
 	communityPackageTriggers: '/@:username/:kodyId/triggers',
+	// Bundled credential mapping approval; the query is the proposal
+	// (buildCredentialApprovalHref). Data: communityPackageApproveCredentialsApi.
+	communityPackageApproveCredentials: '/@:username/:kodyId/approve-credentials',
 	communityPackageApprovePublish: '/@:username/:kodyId/approve-publish',
 	communityPackageApproveCapabilities:
 		'/@:username/:kodyId/approve-capabilities',

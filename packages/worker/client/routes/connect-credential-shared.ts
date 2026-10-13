@@ -3,6 +3,7 @@ import {
 	type CredentialKind,
 	type CredentialListItem,
 	type ParsedCredentialCreateQuery,
+	buildCredentialApprovalHref,
 } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
@@ -382,4 +383,24 @@ export function credentialCreateAgentPrompt(input: {
 		`Kody said: ${input.error}`,
 		`Help me fix the link or the form. Do not ask me to paste the value into chat.`,
 	].join('\n')
+}
+
+/** The approval link that makes a just-saved credential the person's own default for a need. */
+export function credentialNeedApprovalHref(input: {
+	orgSlug: string
+	packageKodyId: string
+	needKey: string
+	credentialId: string
+}) {
+	return buildCredentialApprovalHref({
+		username: input.orgSlug,
+		kodyId: input.packageKodyId,
+		changes: [
+			{
+				target: { type: 'default', layer: 'mine' },
+				needKey: input.needKey,
+				credentials: [{ id: input.credentialId }],
+			},
+		],
+	})
 }

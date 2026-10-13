@@ -175,6 +175,7 @@ import {
 	createCommunityPackageHandler,
 	createCommunityPackageSettingsHandler,
 	createCommunityPackageCredentialsHandler,
+	createCommunityPackageCredentialApprovalHandler,
 	createCommunityReportApiPostHandler,
 } from '#app/handlers/community-detail.tsx'
 import { createCommunityFeatureApiPostHandler } from '#app/handlers/community-feature.ts'
@@ -628,6 +629,8 @@ export function createAppRouter(env: Env) {
 				env,
 				'triggers',
 			),
+			communityPackageApproveCredentials:
+				createCommunityPackageCredentialApprovalHandler(env),
 			communityPackageFiles: createCommunityPackageFilesHandler(env),
 			communityPackageTree: createCommunityPackageTreeHandler(env),
 			communityPackageRaw: createCommunityPackageRawHandler(env),

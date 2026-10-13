@@ -9,6 +9,9 @@ const mockModule = vi.hoisted(() => ({
 				...args: Parameters<typeof PackagePage.loadPackagePage>
 			) => Promise<unknown>
 		>(),
+	requireAuthenticatedPageUser: vi.fn<
+		(...args: Array<unknown>) => Promise<unknown>
+	>(async () => ({ username: 'kentcdodds' })),
 	renderAppPage: vi.fn<typeof SsrRender.renderAppPage>(
 		async (input) =>
 			new Response('ok', {
@@ -30,12 +33,18 @@ vi.mock('#app/ssr-render.tsx', () => ({
 		mockModule.renderAppPage(...args),
 }))
 
+vi.mock('#app/page-auth.ts', () => ({
+	requireAuthenticatedPageUser: (...args: Array<unknown>) =>
+		mockModule.requireAuthenticatedPageUser(...args),
+}))
+
 vi.mock('#app/frame-registrations.ts', () => ({}))
 vi.mock('#app/frame-registry.ts', () => ({
 	handleFrameRequest: async () => null,
 }))
 
 const {
+	createCommunityPackageCredentialApprovalHandler,
 	createCommunityPackageCredentialsHandler,
 	createCommunityPackageSettingsHandler,
 } = await import('./community-detail.tsx')
@@ -218,5 +227,54 @@ test('package credential tabs 404 outside the package org and keep the tab on a 
 	expect(moved.status).toBe(302)
 	expect(moved.headers.get('location')).toBe(
 		'https://example.com/@acme/digest/mappings',
+	)
+})
+
+test('the credential approval page needs a session, an org member, and keeps the proposal across a move', async () => {
+	const handler = createCommunityPackageCredentialApprovalHandler({} as Env)
+	const pageUrl =
+		'https://example.com/@kentcdodds/digest/approve-credentials?default%5Bgithub%5D=bot'
+	const requestPage = () =>
+		handler.handler({
+			request: new Request(pageUrl),
+			params: { username: 'kentcdodds', kodyId: 'digest' },
+			url: new URL(pageUrl),
+		} as never)
+
+	mockModule.requireAuthenticatedPageUser.mockResolvedValueOnce(
+		new Response(null, { status: 302, headers: { location: '/login' } }),
+	)
+	expect((await requestPage()).status).toBe(302)
+
+	const page = {
+		kind: 'page',
+		username: 'kentcdodds',
+		kodyId: 'digest',
+		listing: null,
+		ownerPackage: { id: 'pkg-1', name: 'digest', isPrivate: true },
+		viewerIsOwner: false,
+		viewerCanManage: false,
+		loggedIn: true,
+		invocationUrlOrigin: 'https://example.com',
+	}
+	mockModule.loadPackagePage.mockResolvedValue(page)
+	expect((await requestPage()).status).toBe(404)
+
+	mockModule.renderAppPage.mockClear()
+	mockModule.loadPackagePage.mockResolvedValue({ ...page, viewerIsOwner: true })
+	expect((await requestPage()).status).toBe(200)
+	expect(mockModule.renderAppPage).toHaveBeenCalledWith(
+		expect.objectContaining({ title: 'Approve credential mappings' }),
+	)
+
+	mockModule.loadPackagePage.mockResolvedValue({
+		kind: 'redirect',
+		to: '/@acme/digest',
+		shared: true,
+	})
+	const moved = await requestPage()
+	expect(moved.status).toBe(302)
+	expect(moved.headers.get('location')).toBe(
+		'https://example.com/@acme/digest/approve-credentials?default%5Bgithub%5D=bot',
 	)
 })
