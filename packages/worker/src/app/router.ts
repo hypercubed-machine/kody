@@ -308,6 +308,7 @@ import {
 	createLegacyOrgPackagesRedirectHandler,
 } from '#app/handlers/legacy-org-packages-redirect.ts'
 import {
+	createOrgCredentialNewHandler,
 	createOrgRepositoriesApiHandler,
 	createOrgSectionHandler,
 } from '#app/handlers/org-section.ts'
@@ -655,6 +656,7 @@ export function createAppRouter(env: Env) {
 			orgBillingPortal: createOrgBillingPortalHandler(env),
 			orgConnections: createOrgSectionHandler(env, 'connections'),
 			orgCredentials: createOrgSectionHandler(env, 'credentials'),
+			orgCredentialNew: createOrgCredentialNewHandler(env),
 			orgEmail: createOrgSectionHandler(env, 'email'),
 			orgIntegrations: createOrgSectionHandler(env, 'integrations'),
 			orgJobs: createOrgSectionHandler(env, 'jobs'),

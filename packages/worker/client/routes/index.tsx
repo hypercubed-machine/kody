@@ -256,7 +256,7 @@ export const clientRouteLoaders: Record<string, RouteLoader> = {
 	),
 	[routePattern(routes.connectCredential)]: lazyRouteLoader(
 		onboardingArea,
-		(m) => m.connectCredentialRouteLoader,
+		(m) => m.connectCredentialRedirectLoader,
 	),
 	[routePattern(routes.connectSecretSet)]: lazyRouteLoader(
 		onboardingArea,

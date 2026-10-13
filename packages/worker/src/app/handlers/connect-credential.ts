@@ -1,12 +1,22 @@
 import { type Action } from 'remix/router'
-import { loadAccountCredentialsData } from '#app/account-credentials-data.ts'
+import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { requireAuthenticatedPageUser } from '#app/page-auth.ts'
-import { renderAppPage } from '#app/ssr-render.tsx'
+import { orgCredentialCreatePath } from '#universal/credential-contracts.ts'
 import { type routes } from '#universal/routes.ts'
 
+/** The signup org's creation page, keeping `search` (including its `?`). */
+export function signupOrgCredentialCreateHref(
+	user: Pick<AuthenticatedAppUser, 'request' | 'username'>,
+	search: string,
+) {
+	const slug = user.request.org.slug ?? user.username
+	return `${orgCredentialCreatePath(slug)}${search}`
+}
+
 /**
- * The credential creation link agents hand out. The page reads the link's
- * query itself; the list lets it point at credentials that already fit.
+ * `/connect/credential`: the org-less creation link. The page lives under
+ * an org (`/@slug/-/credentials/new`), so this sends the person to their
+ * signup org's page with the same query.
  */
 export function createConnectCredentialHandler(env: Env) {
 	return {
@@ -16,15 +26,10 @@ export function createConnectCredentialHandler(env: Env) {
 			if (user instanceof Response) {
 				return user
 			}
-			const accountCredentials = await loadAccountCredentialsData({
-				env,
-				user,
-			})
-			return renderAppPage({
-				request,
-				env,
-				title: 'Add a credential',
-				loaderData: { accountCredentials },
+			const { search } = new URL(request.url)
+			return new Response(null, {
+				status: 302,
+				headers: { Location: signupOrgCredentialCreateHref(user, search) },
 			})
 		},
 	} satisfies Action<typeof routes.connectCredential>
