@@ -505,8 +505,18 @@ export function credentialCreateAgentPrompt(input: {
 		input.query.packageKodyId && input.query.needKey
 			? ` for the "${input.query.needKey}" need of package ${input.query.packageKodyId}`
 			: ''
+	// The exchange body can hold fixed values like a client secret.
+	const pageUrl = new URL(input.pageUrl, 'http://localhost')
+	const hadExchange = pageUrl.searchParams.has(loginExchangeParam)
+	pageUrl.searchParams.delete(loginExchangeParam)
+	const shownUrl = /^https?:\/\//.test(input.pageUrl)
+		? pageUrl.toString()
+		: `${pageUrl.pathname}${pageUrl.search}`
 	return [
-		`I tried to save a ${label} credential${name}${forPackage} on Kody: ${input.pageUrl}`,
+		`I tried to save a ${label} credential${name}${forPackage} on Kody: ${shownUrl}`,
+		...(hadExchange
+			? ['(I left out the link’s loginExchange; you have it.)']
+			: []),
 		`Kody said: ${input.error}`,
 		`Help me fix the link or the form. Do not ask me to paste the value into chat.`,
 	].join('\n')

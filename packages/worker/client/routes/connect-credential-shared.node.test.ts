@@ -433,3 +433,23 @@ test('the agent prompt names the kind, credential, need, link, and error', () =>
 		].join('\n'),
 	)
 })
+
+test('the agent prompt leaves out a login link’s exchange', () => {
+	const exchange = encodeURIComponent(
+		JSON.stringify({
+			url: 'https://auth.example.com/token',
+			body: { client_secret: 'fixed-secret', username: '{username}' },
+		}),
+	)
+	const prompt = credentialCreateAgentPrompt({
+		kind: 'login',
+		query: query('kind=login&name=SVC_LOGIN'),
+		pageUrl: `https://kody.codes/@acme/-/credentials/new?kind=login&name=SVC_LOGIN&loginExchange=${exchange}`,
+		error: 'Fill every login field.',
+	})
+	expect(prompt).not.toContain('fixed-secret')
+	expect(prompt).toContain(
+		'https://kody.codes/@acme/-/credentials/new?kind=login&name=SVC_LOGIN',
+	)
+	expect(prompt).toContain('left out the link’s loginExchange')
+})

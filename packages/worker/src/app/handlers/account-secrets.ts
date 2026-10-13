@@ -1401,13 +1401,38 @@ async function handleSaveAction(input: {
 					orgAuditWriterFromRequest(input.env, input.user.request),
 				)
 			}
-		} else if (scope === 'user') {
+		} else if (scope === 'user' || currentSecret?.scope === 'user') {
 			const placement = await readStoredCredentialPlacement({
 				db: input.env.APP_DB,
 				orgId,
-				name,
+				name: currentSecret?.scope === 'user' ? currentSecret.name : name,
 			})
 			keepsOptInHosts = placement != null && placement.kind !== 'secret'
+			if (placement && keepsOptInHosts) {
+				if (currentSecret && currentId !== nextId) {
+					return jsonResponse(
+						{
+							ok: false,
+							error:
+								'Renaming or moving a URL, login, or signing credential here would drop its kind. Create it again under the new name instead.',
+						},
+						400,
+					)
+				}
+				if (
+					allowedHosts.length > 0 &&
+					!sameHostList(allowedHosts, placement.allowedHosts)
+				) {
+					return jsonResponse(
+						{
+							ok: false,
+							error:
+								'URL, login, and signing credentials take hosts, not approved hosts. Edit its hosts from the credential creation page with its value.',
+						},
+						400,
+					)
+				}
+			}
 		}
 	} catch (error) {
 		return jsonResponse(
@@ -1672,6 +1697,14 @@ function readStringArray(body: object, key: string) {
 	const value = (body as Record<string, unknown>)[key]
 	if (!Array.isArray(value)) return []
 	return value.filter((item): item is string => typeof item === 'string')
+}
+
+function sameHostList(left: Array<string>, right: Array<string>) {
+	const rightSet = new Set(right.map((host) => host.toLowerCase()))
+	return (
+		left.length === rightSet.size &&
+		left.every((host) => rightSet.has(host.toLowerCase()))
+	)
 }
 
 function readStringRecord(body: object, key: string) {
