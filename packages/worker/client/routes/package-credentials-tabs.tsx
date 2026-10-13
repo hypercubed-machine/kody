@@ -22,6 +22,7 @@ import {
 	type PackageCredentialsTab,
 	sortNeedsByAttention,
 	triggerStateLabel,
+	withheldTriggerMappingsNote,
 } from '#universal/package-credentials-page.ts'
 import {
 	cardCss,
@@ -432,16 +433,8 @@ function renderTriggerMappings(
 	context: PackageTabContext,
 	trigger: PackageTriggerView,
 ) {
-	const enablement = trigger.enablement
-	if (enablement && !enablement.enabledByYou && enablement.state !== 'off') {
-		return (
-			<p mix={css(mutedCss)}>
-				{enablement.state === 'paused'
-					? 'Someone else turned this trigger on (it is paused), so its credential mappings are theirs.'
-					: 'Someone else turned this trigger on, so its credential mappings are theirs.'}
-			</p>
-		)
-	}
+	const withheld = withheldTriggerMappingsNote(trigger)
+	if (withheld) return <p mix={css(mutedCss)}>{withheld}</p>
 	if (trigger.trigger.kind === 'webhook' && trigger.instanceId === null) {
 		return (
 			<p mix={css(mutedCss)}>
