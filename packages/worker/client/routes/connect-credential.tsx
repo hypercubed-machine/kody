@@ -20,7 +20,6 @@ import {
 	createKeyFormState,
 	credentialCreateAgentPrompt,
 	credentialCreateHandoffHref,
-	credentialCreateKindSummary,
 	credentialCreateMode,
 	credentialCreateTitle,
 	expiresAtDateValue,
@@ -31,8 +30,12 @@ import {
 	keyFormProblem,
 	keyLinkProblem,
 	type KeyFormState,
-	writeCredentialCreateKind,
 } from '#client/routes/connect-credential-shared.ts'
+import {
+	renderKindList,
+	renderMatches,
+	renderPackageAccess,
+} from '#client/routes/connect-credential-parts.tsx'
 import {
 	type CredentialKind,
 	type CredentialListItem,
@@ -58,12 +61,7 @@ import {
 	pageTitleCss,
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 const accountCredentialsApiPath = routes.accountCredentialsApi.href()
 
@@ -73,44 +71,7 @@ const secondaryButtonCss = getSecondaryButtonCss({
 	weight: 'semibold',
 })
 
-const kindGridCss = {
-	display: 'grid',
-	gap: spacing.sm,
-	gridTemplateColumns: 'repeat(auto-fill, minmax(14rem, 1fr))',
-	margin: 0,
-	padding: 0,
-	border: 'none',
-}
-
-const kindOptionCss = {
-	display: 'grid',
-	gap: spacing.xs,
-	padding: spacing.md,
-	borderRadius: radius.md,
-	border: `1px solid ${colors.border}`,
-	color: colors.text,
-	textDecoration: 'none',
-	'&:hover': { borderColor: colors.primary },
-}
-
-const kindOptionSelectedCss = {
-	...kindOptionCss,
-	borderColor: colors.primary,
-	boxShadow: `inset 0 0 0 1px ${colors.primary}`,
-}
-
-const kindOptionUnavailableCss = {
-	...kindOptionCss,
-	color: colors.textMuted,
-	borderStyle: 'dashed',
-}
-
 const mutedCss = { margin: 0, color: colors.textMuted }
-const choiceRowCss = {
-	display: 'flex',
-	gap: spacing.sm,
-	alignItems: 'baseline',
-}
 const errorCss = { margin: 0, color: colors.danger }
 const labelHintCss = {
 	fontWeight: typography.fontWeight.normal,
@@ -147,81 +108,6 @@ export async function connectCredentialRouteLoader(
 		throw new Error('Unable to load your credentials.')
 	}
 	return { accountCredentials: payload }
-}
-
-function renderKindOption(input: {
-	kind: CredentialKind
-	selected: boolean
-	href: string
-}) {
-	const unavailable = credentialCreateMode(input.kind) === 'unavailable'
-	const body = (
-		<>
-			<strong>{credentialKindLabel(input.kind)}</strong>
-			<span mix={css({ color: colors.textMuted })}>
-				{unavailable
-					? 'Not available on the website yet.'
-					: credentialCreateKindSummary(input.kind)}
-			</span>
-		</>
-	)
-	if (unavailable && !input.selected) {
-		return (
-			<li key={input.kind} mix={css({ listStyle: 'none' })}>
-				<span aria-disabled="true" mix={css(kindOptionUnavailableCss)}>
-					{body}
-				</span>
-			</li>
-		)
-	}
-	return (
-		<li key={input.kind} mix={css({ listStyle: 'none' })}>
-			<a
-				href={input.href}
-				aria-current={input.selected ? 'true' : undefined}
-				data-testid={`credential-kind-${input.kind}`}
-				mix={css(input.selected ? kindOptionSelectedCss : kindOptionCss)}
-			>
-				{body}
-			</a>
-		</li>
-	)
-}
-
-function renderMatches(input: {
-	matches: ReadonlyArray<CredentialListItem>
-	orgSlug: string
-}) {
-	if (input.matches.length === 0) return null
-	return (
-		<section mix={css(cardCss)} data-testid="connect-credential-matches">
-			<p mix={css({ margin: 0 })}>
-				You already have{' '}
-				{input.matches.length === 1
-					? 'a credential'
-					: `${input.matches.length} credentials`}{' '}
-				from this provider. If one fits, you do not need a new one.
-			</p>
-			<ul mix={css({ margin: 0, paddingLeft: spacing.lg })}>
-				{input.matches.map((credential) => (
-					<li key={credential.id}>
-						<a
-							href={orgResourcePath(
-								input.orgSlug,
-								'credentials',
-								encodeURIComponent(credential.id),
-							)}
-						>
-							{credential.name}
-						</a>{' '}
-						<span mix={css({ color: colors.textMuted })}>
-							({credentialKindLabel(credential.kind)})
-						</span>
-					</li>
-				))}
-			</ul>
-		</section>
-	)
 }
 
 /**
@@ -630,15 +516,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 									: 'What kind of credential is it?'}
 							</p>
 						)}
-						<ul mix={css(kindGridCss)}>
-							{kinds.map((kind) =>
-								renderKindOption({
-									kind,
-									selected: kind === selected,
-									href: writeCredentialCreateKind(href, kind),
-								}),
-							)}
-						</ul>
+						{renderKindList({ kinds, selected, href })}
 					</section>
 
 					{selected === null
@@ -665,115 +543,6 @@ export function ConnectCredentialRoute(handle: Handle) {
 			</AccountManagementShell>
 		)
 	}
-}
-
-function renderPackageAccess(input: {
-	state: KeyFormState
-	packages: AccountCredentialsResponse['packages']
-	update: (patch: Partial<KeyFormState>) => void
-}) {
-	const { state, packages, update } = input
-	const known = new Set(packages.map((entry) => entry.id))
-	const unknownLocks = state.allowedPackages.filter((id) => !known.has(id))
-	const toggleLock = (id: string, checked: boolean) =>
-		update({
-			allowedPackages: checked
-				? [...new Set([...state.allowedPackages, id])]
-				: state.allowedPackages.filter((entry) => entry !== id),
-		})
-	return (
-		<fieldset
-			data-testid="connect-credential-package-access"
-			mix={css({ ...fieldCss, border: 'none', margin: 0, padding: 0 })}
-		>
-			<legend mix={css(fieldLabelCss)}>Which packages can read it</legend>
-			<label mix={css(choiceRowCss)}>
-				<input
-					type="radio"
-					name="connect-credential-package-scope"
-					checked={state.packageScope === 'org'}
-					mix={on('change', () => update({ packageScope: 'org' }))}
-				/>
-				<span>
-					Packages in this org (lock it to some below, or leave it open)
-				</span>
-			</label>
-			<label mix={css(choiceRowCss)}>
-				<input
-					type="radio"
-					name="connect-credential-package-scope"
-					checked={state.packageScope === 'package'}
-					disabled={packages.length === 0}
-					mix={on('change', () => update({ packageScope: 'package' }))}
-				/>
-				<span>
-					One package only (a package key that no other package or agent code
-					reads)
-				</span>
-			</label>
-			{state.packageScope === 'package' ? (
-				<select
-					aria-label="Package that owns this key"
-					value={state.packageId}
-					mix={[
-						css(inputCss),
-						on('change', (event) =>
-							update({ packageId: event.currentTarget.value }),
-						),
-					]}
-				>
-					<option value="">Choose a package</option>
-					{packages.map((entry) => (
-						<option key={entry.id} value={entry.id}>
-							{entry.kodyId}
-						</option>
-					))}
-				</select>
-			) : packages.length > 0 || unknownLocks.length > 0 ? (
-				<div
-					role="group"
-					aria-label="Lock to packages"
-					mix={css({ display: 'grid', gap: spacing.xs })}
-				>
-					{packages.map((entry) => (
-						<label key={entry.id} mix={css(choiceRowCss)}>
-							<input
-								type="checkbox"
-								checked={state.allowedPackages.includes(entry.id)}
-								mix={on('change', (event) =>
-									toggleLock(entry.id, event.currentTarget.checked),
-								)}
-							/>
-							<span>
-								Lock to <code>{entry.kodyId}</code>
-							</span>
-						</label>
-					))}
-					{unknownLocks.map((id) => (
-						<label key={id} mix={css(choiceRowCss)}>
-							<input
-								type="checkbox"
-								checked
-								mix={on('change', (event) =>
-									toggleLock(id, event.currentTarget.checked),
-								)}
-							/>
-							<span>
-								Lock to package <code>{id}</code>{' '}
-								<span mix={css({ color: colors.textMuted })}>
-									(not found in this org)
-								</span>
-							</span>
-						</label>
-					))}
-					<span mix={css(mutedCss)}>
-						A locked key is readable only by the packages you check. With none
-						checked, any package in this org can use it.
-					</span>
-				</div>
-			) : null}
-		</fieldset>
-	)
 }
 
 function renderKindBody(input: {
