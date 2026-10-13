@@ -48,17 +48,25 @@ function orgIndexRedirect(url: URL): string | null {
 	return withSearch(`/@${orgSegment}/-/credentials`, search)
 }
 
+const secretSetParamRenames: Record<string, string> = {
+	'allowed-host': 'allowedHosts',
+	// The creation link reserves `forPackage` for the package a need belongs
+	// to; on `/connect/secret-set` these name packages the Key is locked to.
+	package: 'allowedPackages',
+	package_id: 'allowedPackages',
+}
+
 /**
- * `/connect/secret-set` reads `package` as an allowed package id; the creation
- * link reserves `forPackage` for the package a need belongs to, so `package`
- * becomes `allowedPackages`.
+ * `/connect/secret-set` (the legacy intake, deprecated) opens the Key form
+ * with the same prefill: name, description, provider, hosts, expiry, package
+ * scope (`scope`, `packageId`), and package locks.
  */
 function connectSecretSetRedirect(url: URL): string {
 	const search = new URLSearchParams()
 	search.set('kind', 'secret')
 	for (const [name, value] of url.searchParams) {
 		if (name === 'kind') continue
-		search.append(name === 'package' ? 'allowedPackages' : name, value)
+		search.append(secretSetParamRenames[name] ?? name, value)
 	}
 	return withSearch(credentialCreatePath, search)
 }

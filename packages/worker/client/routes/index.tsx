@@ -26,6 +26,7 @@ import { routes } from '#universal/routes.ts'
 import {
 	orgAccountClientLoaders,
 	orgAccountClientRoutes,
+	withCredentialRedirectLoader,
 } from './org-account-routes.tsx'
 import { HomeRoute, homeRouteLoader } from './home.tsx'
 import { OAuthCallbackRoute } from './oauth-callback.tsx'
@@ -258,9 +259,8 @@ export const clientRouteLoaders: Record<string, RouteLoader> = {
 		onboardingArea,
 		(m) => m.connectCredentialRedirectLoader,
 	),
-	[routePattern(routes.connectSecretSet)]: lazyRouteLoader(
-		onboardingArea,
-		(m) => m.connectSecretSetRouteLoader,
+	[routePattern(routes.connectSecretSet)]: withCredentialRedirectLoader(
+		lazyRouteLoader(onboardingArea, (m) => m.connectSecretSetRouteLoader),
 	),
 	[routePattern(routes.connectWebhookApply)]: lazyRouteLoader(
 		onboardingArea,

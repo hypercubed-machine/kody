@@ -716,7 +716,9 @@ export function createAppRouter(env: Env) {
 			stripeWebhook: createStripeWebhookHandler(env),
 			connectOauth: createConnectOauthHandler(env),
 			connectSecrets: createConnectSecretsHandler(env),
-			connectSecretSet: createConnectSecretSetHandler(env),
+			connectSecretSet: withCredentialIndexRedirect(
+				createConnectSecretSetHandler(env),
+			),
 			connectCredential: createConnectCredentialHandler(env),
 			connectWebhookApply: createConnectWebhookApplyHandler(env),
 			auth: createAuthHandler(env),
