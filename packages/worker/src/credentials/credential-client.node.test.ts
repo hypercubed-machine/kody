@@ -928,13 +928,22 @@ test('a call map is validated before code runs: unknown keys fail an invoke and 
 	expect(adHoc.warnings).toEqual([
 		expect.stringContaining('credentials.resend is not a need of this code'),
 	])
-	await expect(
-		rejection(validate({ MAIL: 'missing' }, true)),
-	).resolves.toMatchObject({
-		body: {
-			code: 'credential_not_found',
-			createUrl: 'https://example.com/connect/credential?name=missing',
-		},
+	const missing = await rejection(validate({ MAIL: 'missing' }, true))
+	expect(missing.body).toMatchObject({ code: 'credential_not_found' })
+	expect(
+		Object.fromEntries(
+			new URL((missing.body as { createUrl: string }).createUrl).searchParams,
+		),
+	).toEqual({ kind: 'secret', kindMode: 'required', name: 'missing' })
+	const emptyPick = await rejection(
+		openCredentialClient(
+			t.contextFor({ request, packageId, credentials: { MAIL: [] } }),
+			{ key: 'MAIL' },
+		),
+	)
+	expect(emptyPick.body).toMatchObject({
+		code: 'credential_unbound',
+		createUrl: expect.stringContaining('need=MAIL'),
 	})
 	await expect(
 		rejection(

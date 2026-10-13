@@ -24,7 +24,10 @@ import {
 	isFetchCapableCredentialKind,
 	type PackageCredentialKind,
 } from '#worker/package-registry/types.ts'
-import { buildCredentialCreateUrl } from '#universal/credential-contracts.ts'
+import {
+	buildCredentialCreateUrl,
+	type CredentialCreateLinkInput,
+} from '#universal/credential-contracts.ts'
 import {
 	CredentialClientHandleError,
 	signCredentialClientHandle,
@@ -305,7 +308,7 @@ async function createUrlForNeed(
 			? getSavedPackageById(ctx.env.APP_DB, {
 					userId: requireActorRequest(ctx).org.id,
 					packageId: ctx.packageId,
-				})
+				}).catch(() => null)
 			: null,
 	])
 	return buildCredentialCreateUrl(ctx.callerContext.baseUrl, {
@@ -433,12 +436,12 @@ function pickOne(input: {
 	)
 }
 
-/** With a `baseUrl`, a name with no match carries a creation link. */
+/** With a `link`, a name with no match carries a creation link. */
 function findByName(
 	usable: ReadonlyArray<UsableCredential>,
 	pick: CredentialPick,
 	key: string | null,
-	baseUrl?: string,
+	link?: { baseUrl: string } & CredentialCreateLinkInput,
 ) {
 	const matches = usable.filter(
 		(credential) =>
@@ -449,8 +452,13 @@ function findByName(
 		throw refusal(
 			'credential_not_found',
 			`No credential named "${pick.name}" that you can use${pick.scope ? ` in ${pick.scope} scope` : ''}.`,
-			baseUrl
-				? { createUrl: buildCredentialCreateUrl(baseUrl, { name: pick.name }) }
+			link
+				? {
+						createUrl: buildCredentialCreateUrl(link.baseUrl, {
+							...link,
+							name: pick.name,
+						}),
+					}
 				: {},
 		)
 	}
@@ -473,13 +481,20 @@ function pickExplicit(input: {
 	target: NeedTarget
 	baseUrl?: string
 }): Picked {
+	const { kind, provider, match } = input.target
 	const credential = findByName(
 		input.usable,
 		input.pick,
 		input.key,
-		input.baseUrl,
+		input.baseUrl === undefined
+			? undefined
+			: {
+					baseUrl: input.baseUrl,
+					...(match === 'exact' && kind
+						? { kind, kindMode: 'required' as const }
+						: {}),
+				},
 	)
-	const { kind, provider, match } = input.target
 	if (match === 'exact' && kind && credential.kind !== kind) {
 		throw refusal(
 			'invalid_request',
@@ -549,6 +564,13 @@ async function resolveKey(
 		throw refusal(
 			'credential_unbound',
 			`The credentials map picks no credential for "${key}".`,
+			{
+				createUrl: await createUrlForNeed(ctx, {
+					key,
+					provider: target.provider,
+					need,
+				}),
+			},
 		)
 	}
 	const picked = new Map<string, Picked>()
@@ -624,7 +646,9 @@ export async function openCredentialClient(
 			scope: readScope(input.scope),
 		}
 		return await issueClient(ctx, null, {
-			credential: findByName(usable, pick, null, ctx.callerContext.baseUrl),
+			credential: findByName(usable, pick, null, {
+				baseUrl: ctx.callerContext.baseUrl,
+			}),
 			hint: null,
 		})
 	}
