@@ -1,6 +1,7 @@
 import { type Handle, css } from 'remix/component'
 import { readCurrentRouterHref } from '#client/client-router.tsx'
 import { Combobox, type ComboboxOption } from '#client/combobox.tsx'
+import { CopyTextButton } from '#client/copy-text-button.tsx'
 import { replaceLocation } from '#client/replace-location.ts'
 import { createRouteData, routeDataRedirect } from '#client/route-data.tsx'
 import { type AccountStatus } from '#client/routes/account-approval-shared.ts'
@@ -60,6 +61,31 @@ const headerActionsCss = css({
 	flexWrap: 'wrap',
 	gap: spacing.sm,
 })
+
+function credentialsAgentPrompt(input: { pageUrl: string; message: string }) {
+	return [
+		`I opened my credentials on Kody: ${input.pageUrl}`,
+		`Kody said: ${input.message}`,
+		'Help me find out why. Do not ask me to paste any credential value into chat.',
+	].join('\n')
+}
+
+function renderCredentialsError(input: { pageUrl: string; message: string }) {
+	return (
+		<div
+			data-testid="credentials-error"
+			mix={css({ display: 'grid', justifyItems: 'start', gap: spacing.sm })}
+		>
+			<AccountManagementMessage tone="error">
+				{input.message}
+			</AccountManagementMessage>
+			<CopyTextButton
+				value={credentialsAgentPrompt(input)}
+				idleLabel="Copy prompt for your agent"
+			/>
+		</div>
+	)
+}
 
 function scopeLabel(credential: CredentialListItem) {
 	return credential.scope === 'personal' ? 'Personal' : 'Org'
@@ -208,6 +234,10 @@ export function AccountCredentialsRoute(handle: Handle) {
 	return () => {
 		const currentHref = readCurrentRouterHref(handle)
 		const snapshot = credentialsData.read(handle, currentHref)
+		const pageUrl =
+			typeof window === 'undefined'
+				? currentHref
+				: new URL(currentHref, window.location.origin).href
 		if (snapshot.data) payload = snapshot.data
 		const pending = snapshot.kind === 'pending'
 		const status: AccountStatus =
@@ -295,18 +325,20 @@ export function AccountCredentialsRoute(handle: Handle) {
 					}
 				/>
 
-				{snapshot.error ? (
-					<AccountManagementMessage tone="error">
-						{snapshot.error.message}
-					</AccountManagementMessage>
-				) : null}
+				{snapshot.error
+					? renderCredentialsError({
+							message: snapshot.error.message,
+							pageUrl,
+						})
+					: null}
 
-				{selectedMissing ? (
-					<AccountManagementMessage tone="error">
-						That credential was not found in this org. It may have been deleted,
-						or it belongs to another org.
-					</AccountManagementMessage>
-				) : null}
+				{selectedMissing
+					? renderCredentialsError({
+							message:
+								'That credential was not found in this org. It may have been deleted, or it belongs to another org.',
+							pageUrl,
+						})
+					: null}
 
 				<RecordTable
 					mode="expand"
