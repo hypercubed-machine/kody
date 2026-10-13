@@ -84,7 +84,7 @@ export function readPackageCredentialsTabPath(pathname: string): {
 }
 
 /** The package chrome for the tabs, from the package detail API. */
-export type PackageCredentialsPageShell = {
+type PackageCredentialsPageShell = {
 	username: string
 	kodyId: string
 	name: string
@@ -98,7 +98,7 @@ export type PackageCredentialsPageShell = {
 	viewerCanManage: boolean
 }
 
-export type PackageCredentialsPageData = {
+type PackageCredentialsPageData = {
 	shell: PackageCredentialsPageShell
 	/** Null when the credentials API failed; `viewError` says why. */
 	view: PackageCredentialsView | null
@@ -110,7 +110,7 @@ export type PackageCredentialsLoaderData =
 	| ({ ok: true } & PackageCredentialsPageData)
 	| { ok: false; notFound: true }
 
-export function credentialTriggerKindLabel(kind: CredentialTriggerKind) {
+function credentialTriggerKindLabel(kind: CredentialTriggerKind) {
 	switch (kind) {
 		case 'cron':
 			return 'Schedule'
