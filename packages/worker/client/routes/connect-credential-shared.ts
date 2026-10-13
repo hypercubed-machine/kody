@@ -137,6 +137,18 @@ export function findExistingOrgKey(
 }
 
 /**
+ * Why the form cannot save over `existing`: it is another kind in the same
+ * name namespace, and replacing its value would not change its kind.
+ */
+export function existingKindConflict(
+	existing: CredentialListItem | null,
+	kind: CredentialKind,
+) {
+	if (!existing || existing.kind === kind) return null
+	return `A ${credentialKindLabel(existing.kind)} credential named ${existing.name} already exists. Pick another name.`
+}
+
+/**
  * Credentials that may already satisfy the link: the same kind (when the link
  * names one) and, when the link names a provider, the same provider.
  */
@@ -407,7 +419,10 @@ export function buildKeySaveBody(input: {
 		scope,
 		packageId,
 		description: form.description.trim(),
-		provider: form.provider.trim() || null,
+		// An empty string clears the provider of the credential being replaced.
+		provider:
+			form.provider.trim() ||
+			(replacing && input.existing?.provider ? '' : null),
 		expiresAt:
 			form.expiresAt.trim() ||
 			(replacing ? (input.existing?.expiresAt ?? null) : null),
@@ -490,8 +505,18 @@ export function credentialCreateAgentPrompt(input: {
 		input.query.packageKodyId && input.query.needKey
 			? ` for the "${input.query.needKey}" need of package ${input.query.packageKodyId}`
 			: ''
+	// The exchange body can hold fixed values like a client secret.
+	const pageUrl = new URL(input.pageUrl, 'http://localhost')
+	const hadExchange = pageUrl.searchParams.has(loginExchangeParam)
+	pageUrl.searchParams.delete(loginExchangeParam)
+	const shownUrl = /^https?:\/\//.test(input.pageUrl)
+		? pageUrl.toString()
+		: `${pageUrl.pathname}${pageUrl.search}`
 	return [
-		`I tried to save a ${label} credential${name}${forPackage} on Kody: ${input.pageUrl}`,
+		`I tried to save a ${label} credential${name}${forPackage} on Kody: ${shownUrl}`,
+		...(hadExchange
+			? ['(I left out the link’s loginExchange; you have it.)']
+			: []),
 		`Kody said: ${input.error}`,
 		`Help me fix the link or the form. Do not ask me to paste the value into chat.`,
 	].join('\n')

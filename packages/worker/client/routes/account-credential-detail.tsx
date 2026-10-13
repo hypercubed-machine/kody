@@ -105,8 +105,9 @@ function hostsHint(credential: CredentialListItem) {
 		case 'secret':
 		case 'url':
 		case 'login':
-		case 'signing':
 			return 'No hosts approved yet. Kody sends it nowhere until a host is approved.'
+		case 'signing':
+			return 'No hosts approved yet. Kody signs nothing until a host is approved.'
 		case 'oauth':
 			return 'The provider’s API hosts are not known yet.'
 		case 'mcp':
@@ -118,10 +119,29 @@ function hostsHint(credential: CredentialListItem) {
 	}
 }
 
+function renderUsageGaps(detail: AccountCredentialDetail) {
+	return (
+		<>
+			{detail.usageTruncated ? (
+				<p mix={mutedCss}>
+					Only the most recently updated packages are checked.
+				</p>
+			) : null}
+			{detail.usageUnreadable > 0 ? (
+				<p mix={mutedCss}>
+					{detail.usageUnreadable === 1
+						? '1 package could not be checked.'
+						: `${detail.usageUnreadable} packages could not be checked.`}
+				</p>
+			) : null}
+		</>
+	)
+}
+
 function fitLabel(fit: CredentialNeedFit) {
 	switch (fit) {
 		case 'auto':
-			return 'Picked automatically'
+			return 'Only match; picked unless a mapping chooses another'
 		case 'candidate':
 			return 'One of several matches; needs a mapping'
 		case 'possible':
@@ -275,7 +295,7 @@ export function renderCredentialDetail(input: {
 						? `Belongs to ${packageName(credential.packageId, packagesById)}. Only that package’s runs can use it.`
 						: lockedTo.length > 0
 							? `Locked to ${lockedTo.join(', ')}. Other packages cannot use it.`
-							: 'Not locked. Any package run in this org can use it.'}
+							: 'Not locked to specific packages.'}
 				</p>,
 			)}
 
@@ -303,10 +323,21 @@ export function renderCredentialDetail(input: {
 				'Used by',
 				detail === null ? (
 					<p mix={mutedCss}>Loading…</p>
-				) : detail.usage.length === 0 ? (
+				) : credential.packageId ? (
 					<p mix={mutedCss}>
-						No package in this org declares a need this credential fills.
+						Only {packageName(credential.packageId, packagesById)}, through its
+						placeholders. Package keys do not fill declared needs.
 					</p>
+				) : detail.usage.length === 0 ? (
+					<div mix={css({ display: 'grid', gap: spacing.xs })}>
+						<p mix={mutedCss}>
+							No package in this org declares a need this credential fills
+							{credential.status === 'ok'
+								? '.'
+								: ' while it needs attention. Fix it and runs can pick it again.'}
+						</p>
+						{renderUsageGaps(detail)}
+					</div>
 				) : (
 					<div mix={css({ display: 'grid', gap: spacing.xs })}>
 						<ul mix={listCss}>
@@ -321,11 +352,7 @@ export function renderCredentialDetail(input: {
 								</li>
 							))}
 						</ul>
-						{detail.usageTruncated ? (
-							<p mix={mutedCss}>
-								Only the most recently updated packages are checked.
-							</p>
-						) : null}
+						{renderUsageGaps(detail)}
 					</div>
 				),
 			)}

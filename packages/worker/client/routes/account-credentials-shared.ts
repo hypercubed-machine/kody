@@ -15,17 +15,21 @@ import {
 	readCredentialListFilters,
 	writeCredentialListQuery,
 } from '#universal/credentials-list.ts'
-import { orgResourcePath } from '#universal/org-pages.ts'
+import { orgResourcePath, orgSlugFromPathname } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 
 export const credentialsRoute = createListDetailRoute('/account/credentials')
 
-/** One payload per selection; filters only change which rows show. */
+/**
+ * One payload per org and selection; filters only change which rows show.
+ * The org comes from the page path because the fetch binds it by referrer.
+ */
 export function credentialsDataKey(href: string) {
+	const orgSlug =
+		orgSlugFromPathname(new URL(href, 'http://localhost').pathname) ?? ''
 	const selectedId = credentialsRoute.getSelection(href).selectedId
-	return selectedId
-		? `/account/credentials?selected=${encodeURIComponent(selectedId)}`
-		: '/account/credentials'
+	const key = `/account/credentials?org=${encodeURIComponent(orgSlug)}`
+	return selectedId ? `${key}&selected=${encodeURIComponent(selectedId)}` : key
 }
 
 export function readCredentialListFiltersFromHref(href: string) {
