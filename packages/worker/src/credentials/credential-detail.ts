@@ -142,10 +142,16 @@ export async function loadCredentialDetail(input: {
 	/** The org's packages, most recently updated first. */
 	packages: ReadonlyArray<SavedPackageRecord>
 }): Promise<AccountCredentialDetail> {
-	// A package key fills its own package's placeholders, never declared needs.
+	// A package key fills its own package's placeholders, never declared needs,
+	// and a locked credential is never picked for a package outside its locks.
+	const locks = input.credential.lockedToPackageIds
+	const reachable =
+		locks.length > 0
+			? input.packages.filter((pkg) => locks.includes(pkg.id))
+			: input.packages
 	const checked = input.credential.packageId
 		? []
-		: input.packages.slice(0, maxUsagePackages)
+		: reachable.slice(0, maxUsagePackages)
 	const [grants, usage] = await Promise.all([
 		input.ownedByViewer
 			? listGrants(input.env.APP_DB, input.credential.id)
@@ -166,7 +172,7 @@ export async function loadCredentialDetail(input: {
 		grants,
 		usage: usage.usage,
 		usageTruncated:
-			!input.credential.packageId && input.packages.length > checked.length,
+			!input.credential.packageId && reachable.length > checked.length,
 		usageUnreadable: usage.unreadable,
 	}
 }
