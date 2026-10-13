@@ -552,7 +552,7 @@ export function ConnectCredentialRoute(handle: Handle) {
 		)
 		const linkProblem = data ? keyLinkProblem({ query, packages }) : null
 		const scopedPackage =
-			query.packageScopedTo === null
+			query.packageScopedTo === null || (selected && selected !== 'secret')
 				? null
 				: (packages.find((entry) => entry.id === query.packageScopedTo) ?? null)
 		const pageUrl =
