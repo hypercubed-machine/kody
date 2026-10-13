@@ -97,9 +97,17 @@ export function renderLoginExchange(input: {
 	}
 	return (
 		<details
-			open={!exchangeHost || !exchange.tokenPath}
+			open={state.loginExchangeOpen}
 			data-testid="connect-credential-login-exchange"
-			mix={css({ display: 'grid', gap: spacing.sm })}
+			mix={[
+				css({ display: 'grid', gap: spacing.sm }),
+				on('toggle', (event) => {
+					const open = event.currentTarget.open
+					if (open !== state.loginExchangeOpen) {
+						update({ loginExchangeOpen: open })
+					}
+				}),
+			]}
 		>
 			<summary mix={css({ cursor: 'pointer' })}>
 				{exchangeHost && exchange.tokenPath ? (
