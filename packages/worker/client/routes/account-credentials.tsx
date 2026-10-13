@@ -151,7 +151,11 @@ function packageScopeOption(
 	return 'any'
 }
 
-/** Package-scope choice as filters; a chosen package (`locked: id`) stays. */
+/**
+ * Package-scope choice as filters. A chosen package (`locked: id`) stays,
+ * except for package-scoped keys, which belong to a package instead of being
+ * locked to one.
+ */
 function packageScopeFilters(
 	option: PackageScopeOption,
 	current: CredentialListFilters,
@@ -162,7 +166,7 @@ function packageScopeFilters(
 		case 'any':
 			return { ...current, packageScoped: undefined, locked: lockedPackage }
 		case 'scoped':
-			return { ...current, packageScoped: true, locked: lockedPackage }
+			return { ...current, packageScoped: true, locked: undefined }
 		case 'unscoped':
 			return { ...current, packageScoped: false, locked: lockedPackage }
 		case 'locked':
@@ -289,7 +293,9 @@ export function AccountCredentialsRoute(handle: Handle) {
 						status !== 'ready'
 							? 'Loading credentials…'
 							: credentials.length === 0
-								? 'No credentials yet. Add a key, connect an OAuth service, or add an MCP server to get started.'
+								? shownProviders.length > 0
+									? 'No keys, OAuth connections, or MCP servers yet. Your custom secret providers are listed below.'
+									: 'No credentials yet. Add a key, connect an OAuth service, or add an MCP server to get started.'
 								: 'No credentials match the current filters.'
 					}
 					toolbar={
