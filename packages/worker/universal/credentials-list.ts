@@ -90,6 +90,8 @@ export type AccountCredentialDetail = {
 	}>
 	/** True when only the first packages were checked for `usage`. */
 	usageTruncated: boolean
+	/** Checked packages whose published needs could not be read. */
+	usageUnreadable: number
 }
 
 /** The contract response plus what the website page needs to render it. */

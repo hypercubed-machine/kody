@@ -223,7 +223,7 @@ export function AccountCredentialsRoute(handle: Handle) {
 		const packages = payload?.packages ?? []
 		const packagesById = new Map(packages.map((pkg) => [pkg.id, pkg]))
 		const filters = readCredentialListFiltersFromHref(currentHref)
-		const shown = filterCredentialList(credentials, filters)
+		const filtered = filterCredentialList(credentials, filters)
 		const orgSlug = payload?.orgSlug ?? ''
 		const teamOrg = payload?.teamOrg ?? false
 		const selection = credentialsRoute.getSelection(currentHref)
@@ -235,6 +235,11 @@ export function AccountCredentialsRoute(handle: Handle) {
 				? payload.selected
 				: null
 		const personalOrgSlug = payload?.personalOrgSlug ?? null
+		// The open row stays visible so its pane can render under any filter.
+		const shown =
+			selectedItem && !filtered.includes(selectedItem)
+				? [selectedItem, ...filtered]
+				: filtered
 		const selectedMissing =
 			selection.selectedId !== null &&
 			status === 'ready' &&
