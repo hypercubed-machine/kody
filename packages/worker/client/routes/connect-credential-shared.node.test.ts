@@ -112,6 +112,7 @@ test('the Key form starts from the link and saves an org Key', () => {
 			tokenPath: '',
 			rest: {},
 		},
+		loginExchangeOpen: true,
 	})
 	expect(
 		buildKeySaveBody({
@@ -386,6 +387,7 @@ test('a login save builds its value from the exchange body fields', () => {
 		),
 	)
 	expect(loginFieldNames(form.loginExchange)).toEqual(['email', 'password'])
+	expect(form.loginExchangeOpen).toBe(false)
 	expect(isMaskedLoginField('password')).toBe(true)
 	expect(isMaskedLoginField('email')).toBe(false)
 	const save = buildKeySaveBody({
