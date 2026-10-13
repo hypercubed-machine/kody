@@ -47,20 +47,22 @@ export async function loadPackageCredentialsPage(
 			return null
 		}),
 	])
-	if (detailResponse.status === 401 || viewResponse?.status === 401) {
-		return {
-			kind: 'redirect',
-			to: loginRedirect(`${url.pathname}${url.search}`),
-		}
-	}
+	const toLogin = {
+		kind: 'redirect',
+		to: loginRedirect(`${url.pathname}${url.search}`),
+	} as const
+	if (detailResponse.status === 401) return toLogin
 	const detail = await readJson<
 		CommunityDetailApiPayload | CommunityPackageMovedPayload
 	>(detailResponse)
+	// A move or a missing package wins over the credentials API's 401, which
+	// it answers for every signed-out caller.
 	if (detailResponse.status === 404) {
 		const movedTo = detail && !detail.ok ? detail.redirectTo : null
 		if (movedTo) return { kind: 'redirect', to: `${movedTo}/${path.tab}` }
 		return { kind: 'data', data: { ok: false, notFound: true } }
 	}
+	if (viewResponse?.status === 401) return toLogin
 	if (!detailResponse.ok || !detail?.ok) {
 		throw new Error('Unable to load this package.')
 	}

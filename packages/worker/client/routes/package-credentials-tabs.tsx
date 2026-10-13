@@ -576,17 +576,19 @@ export function renderTriggersTab(context: PackageTabContext): RemixNode {
 				own credentials; any need it leaves alone uses that person’s default
 				mapping.
 			</p>
-			{view.triggers.map((trigger) => {
+			{view.triggers.map((trigger, index) => {
 				const id = `package-trigger-${trigger.trigger.kind}-${trigger.trigger.name}`
+				// Trigger names may hold spaces; aria-labelledby splits on them.
+				const titleId = `package-trigger-title-${index}`
 				return (
 					<section
 						key={id}
-						aria-labelledby={id}
+						aria-labelledby={titleId}
 						data-testid={id}
 						mix={css(cardCss)}
 					>
 						<div mix={css({ ...rowCss, justifyContent: 'space-between' })}>
-							<h2 id={id} mix={css(cardTitleCss)}>
+							<h2 id={titleId} mix={css(cardTitleCss)}>
 								{describeTrigger(trigger.trigger)}
 							</h2>
 							<span mix={css(mutedCss)}>{triggerStateLabel(trigger)}</span>
