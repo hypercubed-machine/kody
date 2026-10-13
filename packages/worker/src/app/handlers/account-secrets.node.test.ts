@@ -106,6 +106,9 @@ const mockModule = vi.hoisted(() => ({
 	updateCredentialFields: vi.fn<typeof CredentialFields.updateCredentialFields>(
 		async () => ({}) as never,
 	),
+	readStoredCredentialPlacement: vi.fn<
+		typeof CredentialFields.readStoredCredentialPlacement
+	>(async () => null),
 	setSecretAllowedPackages: vi.fn<
 		typeof secretsService.setSecretAllowedPackages
 	>(async (input) => ({
@@ -292,6 +295,9 @@ vi.mock('#worker/credentials/credential-fields.ts', async (importOriginal) => {
 		updateCredentialFields: (
 			...args: Parameters<typeof CredentialFields.updateCredentialFields>
 		) => mockModule.updateCredentialFields(...args),
+		readStoredCredentialPlacement: (
+			...args: Parameters<typeof CredentialFields.readStoredCredentialPlacement>
+		) => mockModule.readStoredCredentialPlacement(...args),
 	}
 })
 
@@ -1236,6 +1242,201 @@ test('account secrets save sets the provider from a creation link on org Keys on
 		error: expect.stringContaining('A provider is a slug'),
 	})
 	expect(mockModule.updateCredentialFields).not.toHaveBeenCalled()
+})
+
+test('account secrets save stores url, login, and signing credentials with their hosts', async () => {
+	mockSecretsListing([])
+	const call = createHandler()
+	const save = (body: Record<string, unknown>) =>
+		call(
+			postRequest({
+				action: 'save',
+				name: 'webhook',
+				scope: 'user',
+				allowedHosts: [],
+				allowedPackages: [],
+				...body,
+			}),
+		)
+	const savedCredential = () =>
+		mockModule.saveSecret.mock.lastCall?.[0].credential ?? null
+
+	mockModule.saveSecret.mockClear()
+	mockModule.setSecretAllowedHosts.mockClear()
+	expect(
+		(
+			await save({
+				kind: 'url',
+				hosts: ['Hooks.Example.com'],
+				value: 'https://hooks.example.com/abc',
+				provider: 'slack',
+			})
+		).status,
+	).toBe(200)
+	expect(savedCredential()).toMatchObject({
+		kind: 'url',
+		allowedHosts: ['hooks.example.com'],
+		configJson: null,
+		provider: 'slack',
+	})
+	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
+	expect(mockModule.updateCredentialFields).not.toHaveBeenCalled()
+
+	const loginExchange = {
+		url: 'https://api.example.com/login',
+		bodyFormat: 'json',
+		body: { user: '{username}', pass: '{password}' },
+		tokenPath: 'token',
+	}
+	expect(
+		(
+			await save({
+				kind: 'login',
+				hosts: ['api.example.com'],
+				loginExchange,
+				value: JSON.stringify({ username: 'me', password: 'pw' }),
+			})
+		).status,
+	).toBe(200)
+	expect(savedCredential()).toMatchObject({
+		kind: 'login',
+		allowedHosts: ['api.example.com'],
+	})
+	expect(JSON.parse(savedCredential()?.configJson ?? 'null')).toMatchObject({
+		url: loginExchange.url,
+		method: 'POST',
+		ttlSeconds: 3600,
+	})
+
+	expect(
+		(
+			await save({
+				kind: 'signing',
+				hosts: ['*.example.com'],
+				value: '-----BEGIN PRIVATE KEY-----',
+			})
+		).status,
+	).toBe(200)
+	expect(savedCredential()).toMatchObject({
+		kind: 'signing',
+		allowedHosts: ['*.example.com'],
+	})
+})
+
+test('account secrets save refuses opt-in kinds without a typed value, hosts, or a fitting value', async () => {
+	mockSecretsListing([])
+	const call = createHandler()
+	const save = async (body: Record<string, unknown>) => {
+		const response = await call(
+			postRequest({
+				action: 'save',
+				name: 'webhook',
+				scope: 'user',
+				allowedHosts: [],
+				allowedPackages: [],
+				...body,
+			}),
+		)
+		return {
+			status: response.status,
+			error: ((await response.json()) as { error?: string }).error,
+		}
+	}
+	mockModule.saveSecret.mockClear()
+
+	await expect(
+		save({
+			currentId: 'user::::webhook',
+			kind: 'url',
+			hosts: ['hooks.example.com'],
+		}),
+	).resolves.toMatchObject({
+		status: 400,
+		error: expect.stringContaining('Enter the value again'),
+	})
+	await expect(
+		save({ kind: 'url', value: 'https://hooks.example.com/abc' }),
+	).resolves.toMatchObject({
+		status: 400,
+		error: expect.stringContaining('needs hosts'),
+	})
+	await expect(
+		save({
+			kind: 'url',
+			hosts: ['hooks.example.com'],
+			value: 'https://elsewhere.example.org/abc',
+		}),
+	).resolves.toMatchObject({
+		status: 400,
+		error: expect.stringContaining('must be one of its hosts'),
+	})
+	await expect(
+		save({
+			kind: 'url',
+			hosts: ['https://hooks.example.com/'],
+			value: 'https://hooks.example.com/abc',
+		}),
+	).resolves.toMatchObject({
+		status: 400,
+		error: expect.stringContaining('is not a bare host'),
+	})
+	await expect(
+		save({
+			kind: 'login',
+			hosts: ['api.example.com'],
+			value: '{"username":"me"}',
+		}),
+	).resolves.toMatchObject({
+		status: 400,
+		error: expect.stringContaining('needs login_exchange'),
+	})
+	await expect(
+		save({
+			kind: 'url',
+			hosts: ['hooks.example.com'],
+			allowedHosts: ['hooks.example.com'],
+			value: 'https://hooks.example.com/abc',
+		}),
+	).resolves.toMatchObject({
+		status: 400,
+		error: expect.stringContaining('not approved hosts'),
+	})
+	await expect(
+		save({
+			kind: 'url',
+			hosts: ['hooks.example.com'],
+			value: 'https://hooks.example.com/abc',
+			scope: 'package',
+		}),
+	).resolves.toMatchObject({ status: 400 })
+	expect(mockModule.saveSecret).not.toHaveBeenCalled()
+})
+
+test('account secrets save keeps an opt-in credential hosts when the form sends no kind', async () => {
+	mockSecretsListing([makeSecret('webhook')])
+	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce({
+		id: 'cred-webhook',
+		kind: 'url',
+		allowedHosts: ['hooks.example.com'],
+		loginExchange: null,
+		provider: null,
+		inject: { kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
+	})
+	mockModule.setSecretAllowedHosts.mockClear()
+	const response = await createHandler()(
+		postRequest({
+			action: 'save',
+			currentId: 'user::::webhook',
+			name: 'webhook',
+			scope: 'user',
+			value: 'https://hooks.example.com/new',
+			allowedHosts: [],
+			allowedPackages: [],
+		}),
+	)
+	expect(response.status).toBe(200)
+	expect(mockModule.saveSecret.mock.lastCall?.[0].credential).toBeUndefined()
+	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
 })
 
 test('account secrets save stays ok when metadata reload fails after write', async () => {
