@@ -20,6 +20,7 @@ const execFileAsync = promisify(execFile)
 
 export const defaultServerJsonPath = 'server.json'
 export const mcpRegistryBaseUrl = 'https://registry.modelcontextprotocol.io'
+export const mcpRegistryDescriptionMaxLength = 100
 export const duplicateVersionPublishErrorPattern =
 	/cannot publish duplicate version/i
 
@@ -90,6 +91,15 @@ export function parseServerJson(raw: string): ServerJson {
 	}
 	if (typeof version !== 'string' || version.trim() === '') {
 		throw new Error('server.json is missing a non-empty "version".')
+	}
+	const description = record['description']
+	if (
+		typeof description === 'string' &&
+		description.length > mcpRegistryDescriptionMaxLength
+	) {
+		throw new Error(
+			`server.json description must be <= ${String(mcpRegistryDescriptionMaxLength)} characters (MCP registry); got ${String(description.length)}.`,
+		)
 	}
 	return record as ServerJson
 }

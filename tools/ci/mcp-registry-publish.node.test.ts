@@ -11,6 +11,7 @@ import {
 	interpretPublishError,
 	isDuplicateVersionPublishError,
 	main,
+	mcpRegistryDescriptionMaxLength,
 	resolveServerJsonValidationBase,
 	parsePublishedServerResponse,
 	parseServerJson,
@@ -63,6 +64,26 @@ test('classifies registry lookup into publish, skip, or version-bump failure', (
 			fetchFailed: true,
 		}),
 	).toMatchObject({ action: 'publish' })
+})
+
+test('parseServerJson rejects descriptions longer than the MCP registry limit', () => {
+	const tooLong = 'x'.repeat(mcpRegistryDescriptionMaxLength + 1)
+	expect(() =>
+		parseServerJson(
+			JSON.stringify({
+				...localServer,
+				description: tooLong,
+			}),
+		),
+	).toThrow(/description must be <= 100 characters/)
+	expect(
+		parseServerJson(
+			JSON.stringify({
+				...localServer,
+				description: 'x'.repeat(mcpRegistryDescriptionMaxLength),
+			}),
+		).description,
+	).toBe('x'.repeat(mcpRegistryDescriptionMaxLength))
 })
 
 test('server.json equality ignores key order', () => {
