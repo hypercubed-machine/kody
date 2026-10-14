@@ -11,6 +11,7 @@ import {
 	interpretPublishError,
 	isDuplicateVersionPublishError,
 	main,
+	assertServerJsonRegistryDescription,
 	mcpRegistryDescriptionMaxLength,
 	resolveServerJsonValidationBase,
 	parsePublishedServerResponse,
@@ -66,24 +67,36 @@ test('classifies registry lookup into publish, skip, or version-bump failure', (
 	).toMatchObject({ action: 'publish' })
 })
 
-test('parseServerJson rejects descriptions longer than the MCP registry limit', () => {
+test('assertServerJsonRegistryDescription rejects overlong descriptions', async () => {
 	const tooLong = 'x'.repeat(mcpRegistryDescriptionMaxLength + 1)
 	expect(() =>
+		assertServerJsonRegistryDescription({
+			...localServer,
+			description: tooLong,
+		}),
+	).toThrow(/description must be <= 100 characters/)
+	expect(() =>
+		assertServerJsonRegistryDescription({
+			...localServer,
+			description: 'x'.repeat(mcpRegistryDescriptionMaxLength),
+		}),
+	).not.toThrow()
+	// Base/history copies may still be long; parseServerJson must still read them.
+	expect(
 		parseServerJson(
 			JSON.stringify({
 				...localServer,
 				description: tooLong,
 			}),
-		),
-	).toThrow(/description must be <= 100 characters/)
-	expect(
-		parseServerJson(
-			JSON.stringify({
-				...localServer,
-				description: 'x'.repeat(mcpRegistryDescriptionMaxLength),
-			}),
 		).description,
-	).toBe('x'.repeat(mcpRegistryDescriptionMaxLength))
+	).toBe(tooLong)
+	expect(
+		await checkServerJsonVersionBump({
+			head: { ...localServer, description: tooLong },
+			env: {},
+			git: async () => null,
+		}),
+	).toMatchObject({ ok: false, kind: 'invalid' })
 })
 
 test('server.json equality ignores key order', () => {

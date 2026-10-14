@@ -43,7 +43,7 @@ export type PublishedLookup =
 
 export type VersionBumpCheckResult = {
 	ok: boolean
-	kind: 'ok' | 'unchanged' | 'needs-version-bump' | 'skipped'
+	kind: 'ok' | 'unchanged' | 'needs-version-bump' | 'skipped' | 'invalid'
 	message: string
 }
 
@@ -92,7 +92,12 @@ export function parseServerJson(raw: string): ServerJson {
 	if (typeof version !== 'string' || version.trim() === '') {
 		throw new Error('server.json is missing a non-empty "version".')
 	}
-	const description = record['description']
+	return record as ServerJson
+}
+
+/** Registry publish constraint for the local/head server.json only. */
+export function assertServerJsonRegistryDescription(server: ServerJson) {
+	const description = server['description']
 	if (
 		typeof description === 'string' &&
 		description.length > mcpRegistryDescriptionMaxLength
@@ -101,7 +106,6 @@ export function parseServerJson(raw: string): ServerJson {
 			`server.json description must be <= ${String(mcpRegistryDescriptionMaxLength)} characters (MCP registry); got ${String(description.length)}.`,
 		)
 	}
-	return record as ServerJson
 }
 
 export function registryServerVersionUrl(name: string, version: string) {
@@ -328,6 +332,15 @@ export async function checkServerJsonVersionBump(
 	const head =
 		input.head ??
 		parseServerJson(readFileSync(path.join(cwd, defaultServerJsonPath), 'utf8'))
+	try {
+		assertServerJsonRegistryDescription(head)
+	} catch (error) {
+		return {
+			ok: false,
+			kind: 'invalid',
+			message: error instanceof Error ? error.message : String(error),
+		}
+	}
 	const baseRef = await resolveServerJsonValidationBase({
 		cwd,
 		env: input.env,
