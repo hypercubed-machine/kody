@@ -1688,3 +1688,34 @@ test('ensureDmarcEmailRoutingRule fails when destination is unverified', async (
 		expect.stringContaining('not verified yet'),
 	)
 })
+
+test('ensureDmarcEmailRoutingRule soft-skips when deploy token lacks Email Routing', async () => {
+	consoleError.mockImplementation(() => {})
+	const forbidden = vi.fn<typeof fetch>().mockResolvedValue(
+		Response.json(
+			{
+				success: false,
+				errors: [{ code: 10000, message: 'Authentication error' }],
+			},
+			{ status: 403 },
+		),
+	)
+	await expect(
+		ensureDmarcEmailRoutingRule({
+			...creds,
+			zoneId: 'zone-mail',
+			systemEmailDomain: 'kody.codes',
+			forwardTo: 'me@kentcdodds.com',
+			fetcher: forbidden,
+		}),
+	).resolves.toEqual({
+		mailbox: 'dmarc@kody.codes',
+		forwardTo: 'me@kentcdodds.com',
+		created: false,
+		skipped: 'auth',
+	})
+	expect(consoleError).toHaveBeenCalledWith(
+		expect.stringContaining('Skipping Email Routing ensure'),
+	)
+	expect(forbidden).toHaveBeenCalledTimes(1)
+})

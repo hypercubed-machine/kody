@@ -129,7 +129,9 @@ and an Email Routing rule that forwards `dmarc@kody.codes` to
 forward destination must already be verified under **Email → Email Routing →
 Destination addresses** — Cloudflare's verification email is Kent-only and is
 not skippable via API. Deploy token needs DNS Edit plus Email Routing edit on
-the mail zone.
+the mail zone. If the token lacks Email Routing edit, the Routing ensure
+soft-skips with a warning so Worker deploy can proceed; `_dmarc` TXT upsert
+still hard-fails on DNS errors.
 
 ### Access (Zero Trust)
 

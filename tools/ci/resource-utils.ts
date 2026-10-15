@@ -1696,7 +1696,9 @@ function emailRoutingRuleForwardsExactlyTo(input: {
  * destination so DMARC aggregate reports are deliverable. Creates the rule
  * when missing; updates when the matcher exists but the forward target or
  * enabled state differs. Fails when the destination is missing or unverified
- * (Kent must complete Cloudflare's destination verification email).
+ * (Kent must complete Cloudflare's destination verification email). Soft-skips
+ * when the deploy token lacks Email Routing permission (401/403) so Worker
+ * deploys are not blocked; `_dmarc` TXT upsert is separate and still hard.
  */
 export async function ensureDmarcEmailRoutingRule(input: {
 	accountId: string
@@ -1718,6 +1720,39 @@ export async function ensureDmarcEmailRoutingRule(input: {
 		return { mailbox, forwardTo: input.forwardTo, created: false as const }
 	}
 
+	try {
+		return await ensureDmarcEmailRoutingRuleMutate({
+			...input,
+			mailbox,
+			ruleName,
+		})
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error)
+		if (!isPermanentCloudflareAuthFailure(detail)) throw error
+		console.error(
+			`Skipping Email Routing ensure for ${mailbox} → ${input.forwardTo}: deploy token lacks Email Routing edit (${detail}). Add Email Routing edit on the mail zone to CLOUDFLARE_API_TOKEN, then re-run deploy. DMARC TXT upsert is unaffected.`,
+		)
+		return {
+			mailbox,
+			forwardTo: input.forwardTo,
+			created: false as const,
+			skipped: 'auth' as const,
+		}
+	}
+}
+
+async function ensureDmarcEmailRoutingRuleMutate(input: {
+	accountId: string
+	apiToken: string
+	zoneId: string
+	systemEmailDomain: string
+	forwardTo: string
+	mailbox: string
+	ruleName: string
+	apiBaseUrl?: string
+	fetcher?: typeof fetch
+	sleep?: (ms: number) => Promise<void>
+}) {
 	const destinations: Array<CloudflareEmailRoutingDestination> = []
 	{
 		let page = 1
@@ -1772,12 +1807,15 @@ export async function ensureDmarcEmailRoutingRule(input: {
 		} while (page <= totalPages)
 	}
 	const existing = rules.find((rule) =>
-		emailRoutingRuleMatchesDmarcMailbox({ rule, mailbox }),
+		emailRoutingRuleMatchesDmarcMailbox({
+			rule,
+			mailbox: input.mailbox,
+		}),
 	)
 	const desiredBody = {
-		name: ruleName,
+		name: input.ruleName,
 		enabled: true,
-		matchers: [{ type: 'literal', field: 'to', value: mailbox }],
+		matchers: [{ type: 'literal', field: 'to', value: input.mailbox }],
 		actions: [{ type: 'forward', value: [input.forwardTo] }],
 	}
 	if (existing) {
@@ -1789,10 +1827,10 @@ export async function ensureDmarcEmailRoutingRule(input: {
 			})
 		if (alreadyOk) {
 			console.error(
-				`Email Routing rule exists: ${mailbox} → ${input.forwardTo} (${existing.id})`,
+				`Email Routing rule exists: ${input.mailbox} → ${input.forwardTo} (${existing.id})`,
 			)
 			return {
-				mailbox,
+				mailbox: input.mailbox,
 				forwardTo: input.forwardTo,
 				created: false as const,
 				id: existing.id,
@@ -1808,10 +1846,10 @@ export async function ensureDmarcEmailRoutingRule(input: {
 			body: desiredBody,
 		})
 		console.error(
-			`Updated Email Routing rule: ${mailbox} → ${input.forwardTo} (${updated.result?.id ?? existing.id})`,
+			`Updated Email Routing rule: ${input.mailbox} → ${input.forwardTo} (${updated.result?.id ?? existing.id})`,
 		)
 		return {
-			mailbox,
+			mailbox: input.mailbox,
 			forwardTo: input.forwardTo,
 			created: false as const,
 			id: updated.result?.id ?? existing.id,
@@ -1828,10 +1866,10 @@ export async function ensureDmarcEmailRoutingRule(input: {
 		body: desiredBody,
 	})
 	console.error(
-		`Created Email Routing rule: ${mailbox} → ${input.forwardTo} (${created.result?.id})`,
+		`Created Email Routing rule: ${input.mailbox} → ${input.forwardTo} (${created.result?.id})`,
 	)
 	return {
-		mailbox,
+		mailbox: input.mailbox,
 		forwardTo: input.forwardTo,
 		created: true as const,
 		id: created.result?.id,
