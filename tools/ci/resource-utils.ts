@@ -1730,7 +1730,7 @@ export async function ensureDmarcEmailRoutingRule(input: {
 		const detail = error instanceof Error ? error.message : String(error)
 		if (!isPermanentCloudflareAuthFailure(detail)) throw error
 		console.error(
-			`Skipping Email Routing ensure for ${mailbox} → ${input.forwardTo}: deploy token lacks Email Routing edit (${detail}). Add Email Routing edit on the mail zone to CLOUDFLARE_API_TOKEN, then re-run deploy. DMARC TXT upsert is unaffected.`,
+			`Skipping Email Routing ensure for ${mailbox} → ${input.forwardTo}: Cloudflare rejected Email Routing API access (${detail}). Grant the deploy token Email Routing read/edit (account destinations + zone rules), then re-run deploy. DMARC TXT upsert is unaffected.`,
 		)
 		return {
 			mailbox,
