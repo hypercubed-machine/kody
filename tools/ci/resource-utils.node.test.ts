@@ -207,22 +207,17 @@ test('Wrangler / Cloudflare output and error classifiers', () => {
 			'Cloudflare API request failed (403): Authentication error',
 			true,
 		],
-		// Empty/malformed 401/403 bodies still surface the status — treat as
-		// permanent auth so Email Routing soft-skip (and no token retry) apply.
+		// Malformed 401/403 stay retryable globally; Email Routing soft-skip
+		// matches them locally without changing this classifier.
 		[
 			isPermanentCloudflareAuthFailure,
 			'Malformed Cloudflare response (403): (empty body)',
-			true,
-		],
-		[
-			isPermanentCloudflareAuthFailure,
-			'Malformed Cloudflare response (401): (empty body)',
-			true,
+			false,
 		],
 		[
 			isRetryableCloudflareFailure,
 			'Malformed Cloudflare response (403): (empty body)',
-			false,
+			true,
 		],
 		// 401/403 win over "Internal authentication error" wording so a real
 		// unauthorized response is never retried with the same token.
@@ -1735,4 +1730,35 @@ test('ensureDmarcEmailRoutingRule soft-skips when deploy token lacks Email Routi
 		expect.stringContaining('Skipping Email Routing ensure'),
 	)
 	expect(forbidden).toHaveBeenCalledTimes(1)
+})
+
+test('ensureDmarcEmailRoutingRule soft-skips malformed 403 without global auth classify', async () => {
+	consoleError.mockImplementation(() => {})
+	const htmlForbidden = vi.fn<typeof fetch>().mockImplementation(async () => {
+		return new Response('<html>forbidden</html>', { status: 403 })
+	})
+	await expect(
+		ensureDmarcEmailRoutingRule({
+			...creds,
+			zoneId: 'zone-mail',
+			systemEmailDomain: 'kody.codes',
+			forwardTo: 'me@kentcdodds.com',
+			fetcher: htmlForbidden,
+			// Permanent auth-skip path: do not burn retry budget on HTML 403.
+			sleep: async () => {},
+		}),
+	).resolves.toEqual({
+		mailbox: 'dmarc@kody.codes',
+		forwardTo: 'me@kentcdodds.com',
+		created: false,
+		skipped: 'auth',
+	})
+	expect(
+		isPermanentCloudflareAuthFailure(
+			'Malformed Cloudflare response (403) for /email/routing/addresses?page=1&per_page=50: <html>forbidden</html>',
+		),
+	).toBe(false)
+	expect(consoleError).toHaveBeenCalledWith(
+		expect.stringContaining('Skipping Email Routing ensure'),
+	)
 })

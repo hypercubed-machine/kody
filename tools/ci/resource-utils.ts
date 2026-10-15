@@ -79,9 +79,8 @@ export class CloudflareResourceError extends Error {
  */
 export function isPermanentCloudflareAuthFailure(message: string) {
 	if (
-		/(?:Cloudflare API request failed|Malformed Cloudflare response) \((?:401|403)\)/.test(
-			message,
-		)
+		/Cloudflare API request failed \(401\)/.test(message) ||
+		/Cloudflare API request failed \(403\)/.test(message)
 	) {
 		return true
 	}
@@ -1729,7 +1728,9 @@ export async function ensureDmarcEmailRoutingRule(input: {
 		})
 	} catch (error) {
 		const detail = error instanceof Error ? error.message : String(error)
-		if (!isPermanentCloudflareAuthFailure(detail)) throw error
+		// Soft-skip only for this ensure. Keep malformed 401/403 local so the
+		// global auth classifier still retries truncated/HTML bodies elsewhere.
+		if (!isDmarcEmailRoutingAuthSkipFailure(detail)) throw error
 		console.error(
 			`Skipping Email Routing ensure for ${mailbox} → ${input.forwardTo}: Cloudflare rejected Email Routing API access (${detail}). Grant the deploy token Email Routing read/edit (account destinations + zone rules), then re-run deploy. DMARC TXT upsert is unaffected.`,
 		)
@@ -1740,6 +1741,18 @@ export async function ensureDmarcEmailRoutingRule(input: {
 			skipped: 'auth' as const,
 		}
 	}
+}
+
+/**
+ * Email Routing soft-skip matcher: permanent token auth, plus empty/HTML
+ * 401/403 bodies that surface as `Malformed Cloudflare response (401|403)`.
+ * Scoped here so other Cloudflare callers still retry malformed responses.
+ */
+function isDmarcEmailRoutingAuthSkipFailure(message: string) {
+	return (
+		isPermanentCloudflareAuthFailure(message) ||
+		/Malformed Cloudflare response \((?:401|403)\)/.test(message)
+	)
 }
 
 async function ensureDmarcEmailRoutingRuleMutate(input: {
