@@ -79,8 +79,9 @@ export class CloudflareResourceError extends Error {
  */
 export function isPermanentCloudflareAuthFailure(message: string) {
 	if (
-		/Cloudflare API request failed \(401\)/.test(message) ||
-		/Cloudflare API request failed \(403\)/.test(message)
+		/(?:Cloudflare API request failed|Malformed Cloudflare response) \((?:401|403)\)/.test(
+			message,
+		)
 	) {
 		return true
 	}
