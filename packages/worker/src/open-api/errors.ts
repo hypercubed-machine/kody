@@ -28,6 +28,7 @@ import {
 	isArtifactsGitTransientRemapError,
 	toArtifactsGitUnavailableError,
 } from '#worker/repo/artifacts-git-retry.ts'
+import { ensureRetryAfterHeader } from '#worker/http-retry-after.ts'
 
 export { artifactsGitTemporarilyUnavailableMessage }
 
@@ -197,6 +198,7 @@ export function toApiError(error: unknown): ApiError {
 			code: 'entitlement_limit',
 			message: getErrorMessage(limitError),
 			details: limitError.details,
+			headers: { 'Retry-After': '60' },
 			cause: error,
 		})
 	}
@@ -231,8 +233,15 @@ export function toApiError(error: unknown): ApiError {
 }
 
 export function apiErrorResponse(error: ApiError) {
+	const headers = new Headers({
+		'Cache-Control': 'no-store',
+		...error.headers,
+	})
+	// Every HTTP 429 includes Retry-After. Cloudflare rate-limit bindings do
+	// not expose remaining/limit cheaply, so we do not send RateLimit-*.
+	ensureRetryAfterHeader(headers, error.status)
 	return Response.json(error.toBody(), {
 		status: error.status,
-		headers: { 'Cache-Control': 'no-store', ...error.headers },
+		headers,
 	})
 }

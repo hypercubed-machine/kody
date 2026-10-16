@@ -176,6 +176,22 @@ export const publicOgPages = {
 		ogDescription: 'Contact support for the hosted Kody service at kody.codes.',
 		path: '/support',
 	},
+	about: {
+		imageTitle: 'About',
+		imageSubtitle: "Your agents' cloud — what Kody is and who runs it.",
+		ogTitle: 'About — Kody',
+		ogDescription:
+			"Kody is Your agents' cloud for individuals and teams. Learn what it is and who operates kody.codes.",
+		path: '/about',
+	},
+	contact: {
+		imageTitle: 'Contact',
+		imageSubtitle: 'Reach the hosted kody.codes operator.',
+		ogTitle: 'Contact — Kody',
+		ogDescription:
+			'Email support@kody.codes for the hosted Kody service, or join Discord and GitHub.',
+		path: '/contact',
+	},
 	privacy: {
 		imageTitle: 'Privacy',
 		imageSubtitle:

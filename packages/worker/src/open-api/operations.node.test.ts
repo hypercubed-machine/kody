@@ -62,6 +62,51 @@ function isQueryEncodable(schema: unknown) {
 	})
 }
 
+test('every operation documents Error for common 4xx/5xx and default', async () => {
+	const document = await buildOpenApiDocument({
+		serverUrl: 'https://api.example.test',
+	})
+	expect(document.components.responses['Error']).toMatchObject({
+		content: {
+			'application/json': {
+				schema: { $ref: '#/components/schemas/Error' },
+			},
+		},
+	})
+	expect(document.components.schemas['Error']).toBeTruthy()
+	const requiredStatuses = [
+		'400',
+		'401',
+		'403',
+		'404',
+		'405',
+		'409',
+		'413',
+		'415',
+		'429',
+		'500',
+		'503',
+		'default',
+	]
+	const problems: Array<string> = []
+	for (const [path, methods] of Object.entries(document.paths)) {
+		for (const [method, operation] of Object.entries(methods)) {
+			for (const status of requiredStatuses) {
+				const response = operation.responses[status]
+				if (
+					!response ||
+					(response as { $ref?: string }).$ref !==
+						'#/components/responses/Error'
+				) {
+					problems.push(`${method.toUpperCase()} ${path} missing ${status}`)
+				}
+			}
+		}
+	}
+	expect(problems).toEqual([])
+	expect(document.info.description).toContain('Retry-After')
+})
+
 test('operation ids and method+path pairs are unique', () => {
 	const ids = apiOperations.map((operation) => operation.operationId)
 	expect(new Set(ids).size).toBe(ids.length)

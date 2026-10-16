@@ -56,6 +56,20 @@ CapabilityProxy / package-graph over a `kody_at_…` token (see
 List and revoke with `tokenList` / `tokenRevoke`, or the same operations over
 HTTP.
 
+## Errors and rate limits
+
+Every error body is `{ "error": { "code", "message", "details"? } }` — the
+OpenAPI `Error` schema. Operations document the common 4xx/5xx statuses (and
+`default`) with that response.
+
+The edge rate-limits requests per IP and per API token. **Every HTTP 429
+includes `Retry-After` (seconds).** Honor it before retrying. Kody does not send
+`RateLimit-*` remaining/limit headers; the Cloudflare rate-limit binding only
+reports success or failure.
+
+Compatibility for `/v1` and other public contracts is described in
+[Versioning and deprecation](./versioning-and-deprecation.md).
+
 ## Metering
 
 Each Open API operation (HTTPS, MCP `api`, CapabilityProxy hop, or package-graph
@@ -65,6 +79,8 @@ still meters as usual.
 ## Where to go next
 
 - [api-docs.kody.codes](https://api-docs.kody.codes) — interactive OpenAPI
+- [Versioning and deprecation](./versioning-and-deprecation.md) — additive
+  `/v1`, phased migrations
 - [Local CLI execute](./local-execute.md) — `@kodycodes/cli execute --local`
 - [Runtime and efficiency](./platform-efficiency.md) — how cloud execute meters
   worker days

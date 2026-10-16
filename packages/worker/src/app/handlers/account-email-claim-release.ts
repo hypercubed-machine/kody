@@ -175,7 +175,14 @@ export function createAccountEmailClaimReleaseHandler(env: Env) {
 						error:
 							'You have released the maximum number of addresses for today. Try again tomorrow.',
 					},
-					429,
+					{
+						status: 429,
+						headers: {
+							'Retry-After': String(
+								emailClaimReleaseSuccessRateLimitConfig.windowSeconds,
+							),
+						},
+					},
 				)
 			}
 

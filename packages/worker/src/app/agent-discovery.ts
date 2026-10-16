@@ -485,6 +485,7 @@ export function buildOpenApiDiscoveryMarkdown(baseUrl: string): string {
 		`- [Interactive docs](${kodyApiDocsOrigin}/) — Scalar UI at api-docs.kody.codes`,
 		`- [OpenAPI description](${kodyOpenApiSpecUrl}) — machine-readable service description`,
 		`- [Kody Open API guide](${baseUrl}/docs/open-api.md) — how to mint tokens and call \`/v1\``,
+		`- [Versioning and deprecation](${baseUrl}/docs/versioning-and-deprecation.md) — additive \`/v1\`, phased migrations`,
 		'',
 	].join('\n')
 }

@@ -8,6 +8,8 @@ import { setAuthSessionSecret } from '#app/auth-session.ts'
 import { invalidateCommunityPublicCache } from '#app/data-cache.ts'
 import { createDiscordHandler } from '#app/handlers/discord.ts'
 import { createFaqHandler } from '#app/handlers/faq.ts'
+import { createAboutHandler } from '#app/handlers/about.ts'
+import { createContactHandler } from '#app/handlers/contact.ts'
 import { createSupportHandler } from '#app/handlers/support.ts'
 import { createMemoryKv } from '#worker/test-support/auth-provider-harness.ts'
 import { executePreparedD1Batch } from '#worker/test-support/d1-prepared-batch.ts'
@@ -105,6 +107,44 @@ test('renderAppPage renders the public support page for anonymous visitors', asy
 	expect(html).toContain('href="/support">Support</a>')
 	expect(html).toContain('href="/docs/cant-open-or-get-mail"')
 	expect(html).toContain("If you can't open kody.codes or get mail from us")
+})
+
+test('renderAppPage renders the public about page for anonymous visitors', async () => {
+	invalidateCommunityPublicCache()
+	setAuthSessionSecret(testCookieSecret)
+	const env = createTestEnv()
+
+	const response = await createAboutHandler(env).handler({
+		request: new Request('https://example.com/about'),
+	} as never)
+
+	expect(response.status).toBe(200)
+	const html = await response.text()
+	expect(html).toContain('<title>About</title>')
+	expect(html).toContain("Your agents' cloud")
+	expect(html).toContain('Kent C. Dodds')
+	expect(html).toContain('Fair Source')
+	expect(html).toContain('href="/about">About</a>')
+	expect(html.replace(/<[^>]+>/g, ' ').length).toBeGreaterThan(500)
+})
+
+test('renderAppPage renders the public contact page for anonymous visitors', async () => {
+	invalidateCommunityPublicCache()
+	setAuthSessionSecret(testCookieSecret)
+	const env = createTestEnv()
+
+	const response = await createContactHandler(env).handler({
+		request: new Request('https://example.com/contact'),
+	} as never)
+
+	expect(response.status).toBe(200)
+	const html = await response.text()
+	expect(html).toContain('<title>Contact</title>')
+	expect(html).toContain('mailto:support@kody.codes')
+	expect(html).toContain('support@kody.codes')
+	expect(html).toContain('href="/contact">Contact</a>')
+	expect(html).toContain('href="/privacy"')
+	expect(html.replace(/<[^>]+>/g, ' ').length).toBeGreaterThan(500)
 })
 
 test('renderAppPage renders the public Discord connect page', async () => {

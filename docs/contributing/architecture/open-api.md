@@ -281,8 +281,12 @@ Every error is `{ error: { code, message, details? } }` with
 | 409    | `account_deleting`                                                                                                 |
 | 413    | `payload_too_large`                                                                                                |
 | 415    | `unsupported_media_type`                                                                                           |
-| 429    | `rate_limited` (edge, `Retry-After`), `entitlement_limit`                                                          |
+| 429    | `rate_limited` (edge), `entitlement_limit` — every 429 includes `Retry-After` (seconds); no `RateLimit-*` headers  |
 | 500    | `capability_error`, `internal_error`                                                                               |
+| 503    | `internal_error` / `account_deleting` (retryable)                                                                  |
+
+OpenAPI operations list these statuses (plus `default`) with
+`#/components/responses/Error`.
 
 ## Metering
 

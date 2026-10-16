@@ -76,6 +76,27 @@ export type OpenApiDocument = {
 /** Public interactive docs host (separate Worker; JSON stays on api.kody.codes). */
 export const kodyApiDocsUrl = 'https://api-docs.kody.codes'
 
+const openApiErrorResponseRef = { $ref: '#/components/responses/Error' }
+
+/**
+ * Explicit 4xx/5xx statuses plus `default`, all using the shared Error
+ * response. Scanners and codegen that ignore `default` still see Error.
+ */
+const openApiErrorResponses: Record<string, { $ref: string }> = {
+	'400': openApiErrorResponseRef,
+	'401': openApiErrorResponseRef,
+	'403': openApiErrorResponseRef,
+	'404': openApiErrorResponseRef,
+	'405': openApiErrorResponseRef,
+	'409': openApiErrorResponseRef,
+	'413': openApiErrorResponseRef,
+	'415': openApiErrorResponseRef,
+	'429': openApiErrorResponseRef,
+	'500': openApiErrorResponseRef,
+	'503': openApiErrorResponseRef,
+	default: openApiErrorResponseRef,
+}
+
 export type ResolvedApiOperation = {
 	operation: ApiOperation
 	description: string
@@ -301,7 +322,7 @@ function buildGatewayFetchStreamOperation(
 					},
 				},
 			},
-			default: { $ref: '#/components/responses/Error' },
+			...openApiErrorResponses,
 		},
 		security: [{ apiToken: [] }],
 		'x-kody-permission': resolved.permission,
@@ -422,7 +443,7 @@ function buildOperation(
 				description: 'Success.',
 				content: { 'application/json': { schema: outputSchema } },
 			},
-			default: { $ref: '#/components/responses/Error' },
+			...openApiErrorResponses,
 		},
 		security: [{ apiToken: [] }],
 		'x-kody-permission': resolved.permission,
@@ -479,7 +500,9 @@ function buildDocumentBody(registry: BuiltCapabilityRegistry) {
 				'Authenticate with `Authorization: Bearer kody_at_…`. Tokens are minted by the MCP `api` tool (`tokenCreate`) or by another token, and each carries explicit org-permission scopes. There is no write-implies-read hierarchy.',
 				apiTokenIdleTtlDescription(),
 				'',
-				'Errors use `{ "error": { "code", "message", "details"? } }`. Requests are rate limited per IP and per token (HTTP 429 with `Retry-After`).',
+				'Errors use `{ "error": { "code", "message", "details"? } }` (`components.schemas.Error` / `components.responses.Error`). Every operation lists the common 4xx/5xx statuses plus `default`, all pointing at that Error response.',
+				'',
+				'Requests are rate limited per IP and per token. Every HTTP 429 includes `Retry-After` (seconds). Remaining/limit counters are not exposed as `RateLimit-*` headers (the edge rate-limit binding does not provide them).',
 				'',
 				'`operationId` values match Kody capability names, so the same ids work with the MCP `api` tool (`{ operationId, params }`, where params hold path, query, and body fields flat).',
 				'',

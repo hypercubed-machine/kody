@@ -761,7 +761,10 @@ export class PackageRealtimeSession extends DurableObject<Env> {
 							details: error.details,
 						},
 					},
-					{ status: 429 },
+					{
+						status: 429,
+						headers: { 'Retry-After': '60' },
+					},
 				)
 			}
 			try {

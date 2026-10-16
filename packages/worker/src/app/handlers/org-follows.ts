@@ -10,7 +10,10 @@ import {
 } from '#app/follows-web.ts'
 import { resolveOrgManagementAccess } from '#app/org-management-access.ts'
 import { renderAppPage } from '#app/ssr-render.tsx'
-import { isFollowTargetKind } from '#worker/follow/types.ts'
+import {
+	followCreateWindowSeconds,
+	isFollowTargetKind,
+} from '#worker/follow/types.ts'
 import { jsonResponse } from '#worker/json-response.ts'
 import { type OrgFollowsPostPayload } from '#universal/follows.ts'
 import { type routes } from '#universal/routes.ts'
@@ -109,7 +112,16 @@ export function createOrgFollowsApiPostHandler(env: Env) {
 				org: access.org,
 				body,
 			})
-			return jsonResponse(payload, orgFollowsPostStatus(payload))
+			const status = orgFollowsPostStatus(payload)
+			if (status === 429) {
+				return jsonResponse(payload, {
+					status,
+					headers: {
+						'Retry-After': String(followCreateWindowSeconds),
+					},
+				})
+			}
+			return jsonResponse(payload, status)
 		},
 	} satisfies Action<typeof routes.orgFollowsApiPost>
 }

@@ -371,7 +371,12 @@ async function rateLimited(request: Request, env: Env, key: string) {
 function tooManyAttempts() {
 	return jsonResponse(
 		{ ok: false, error: 'Too many join attempts. Try again shortly.' },
-		429,
+		{
+			status: 429,
+			headers: {
+				'Retry-After': String(orgInviteJoinRateLimitConfig.windowSeconds),
+			},
+		},
 	)
 }
 

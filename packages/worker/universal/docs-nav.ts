@@ -94,6 +94,10 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			{ slug: 'local-execute', label: 'Local CLI execute' },
 			{ slug: 'auth-setup-git', label: 'Git credential helper' },
 			{ slug: 'open-api', label: 'Kody Open API' },
+			{
+				slug: 'versioning-and-deprecation',
+				label: 'Versioning and deprecation',
+			},
 		],
 	},
 	{
