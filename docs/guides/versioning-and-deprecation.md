@@ -10,12 +10,15 @@ category: platform
 
 # Versioning and deprecation
 
-Kody does not break users on purpose. Public contracts — Open API paths and
-`operationId` values, capability names and fields, MCP tool shapes, package
-import patterns the platform ships, and documented HTTP headers — stay usable
-while we migrate. Prefer additive change. When a breaking change is unavoidable,
-ship a phased migration with codemods (or an equivalent automated fix) and a
-deprecation window proportional to impact.
+We do not break people and their packages
+([principle](../principles/no-breaking-changes.md)). Public contracts — Open API
+paths and `operationId` values, capability names and fields, MCP tool shapes,
+package import patterns the platform ships, and documented HTTP headers — stay
+usable while we migrate. Prefer additive change. When a breaking change is
+unavoidable, ship a phased migration with a codemod (so users often need not
+notice), or a phased migration plus owner email with agent-ready prompts when a
+codemod is not possible. Give time to migrate proportional to how long, how
+complicated, and how impactful the change is.
 
 ## What we treat as a contract
 
