@@ -55,5 +55,5 @@ Writes and agent-facing surfaces are gone. `valueGet` / `valueList` /
 ## LATER-NOTE (2026-10-16)
 
 The drain, `/account/values`, the unadvertised values guide, and data-inventory
-reads are removed. `value_entries` and `value_buckets` stay in D1 until the DROP
-migration in the next deploy. Production rows were already 0.
+reads are removed. `value_entries` and `value_buckets` drop in migration
+`0159-drop-value-tables.sql`. Production rows were already 0.

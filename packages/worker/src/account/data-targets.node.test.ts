@@ -348,6 +348,8 @@ test('final schema drops retired tables without stale deletion/export inventory 
 		'user_package_run_successes',
 		'user_activation_milestones',
 		'package_invocation_tokens',
+		'value_buckets',
+		'value_entries',
 	]
 	const deletionStatements = accountUserDataTargets.map(
 		(target) => buildUserScopedDeleteOrUpdateSql(matchFor(target)).sql,
@@ -375,10 +377,7 @@ test('final schema drops retired tables without stale deletion/export inventory 
 			.all() as Array<{ name: string }>
 	).map((table) => table.name)
 	expect(tables.filter((table) => retiredTables.includes(table))).toEqual([])
-	expect([...accountUserDataPendingDropTables]).toEqual([
-		'value_buckets',
-		'value_entries',
-	])
+	expect([...accountUserDataPendingDropTables]).toEqual([])
 	for (const table of accountUserDataPendingDropTables) {
 		expect(inventorySql).not.toMatch(new RegExp(`\\b${table}\\b`, 'u'))
 		expect(tables).toContain(table)

@@ -12,11 +12,11 @@ org transfer, soft-delete, entitlements byte math, and package cleanup no longer
 read `value_entries` or `value_buckets`. `primitives.yaml` has no `id: values`
 entry.
 
-The tables remain until a later deploy adds
-`DROP TABLE IF EXISTS value_entries; DROP TABLE IF EXISTS value_buckets;`. Do
-not edit applied migrations. Production rows were deleted on 2026-10-16 (0
-buckets / 0 entries). They are covered by disaster-recovery snapshots; the D1
-Time Travel bookmark taken immediately before that delete is
+Migration `0159-drop-value-tables.sql` drops `value_entries` and
+`value_buckets`. Applied migrations stay immutable. Production rows were deleted
+on 2026-10-16 (0 buckets / 0 entries) before the code removal. They are covered
+by disaster-recovery snapshots; the D1 Time Travel bookmark taken immediately
+before that delete is
 `00001342-0001140b-00005106-b32c81967388d0713bcd60dfa9e01c3a`.
 
 ## Destination map
@@ -36,8 +36,8 @@ Do not invent a replacement primitive.
 
 ## Remaining work
 
-Drop the two tables in the deploy after this code removal. Tracked by
-[#1728](https://github.com/kentcdodds/kody/issues/1728).
+None in this repo. The code removal and the table drop are separate deploys.
+Tracked by [#1728](https://github.com/kentcdodds/kody/issues/1728).
 
 ## What not to do
 

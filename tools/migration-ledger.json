@@ -591,6 +591,10 @@
 		{
 			"filename": "0158-webhook-endpoints-multi-per-name.sql",
 			"sha256": "628083d4404dbeb97f295f5ce89fa8e459ee41b5c97c19977e29ec8ee3a5bbd0"
+		},
+		{
+			"filename": "0159-drop-value-tables.sql",
+			"sha256": "9616ecd448ae852bbc480d0b0babc1c2c8692fbeedc87ec1a55c8ab9d925f5e6"
 		}
 	]
 }
