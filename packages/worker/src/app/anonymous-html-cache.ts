@@ -45,6 +45,8 @@ const cacheableAnonymousExactPaths = new Set([
 	'/faq',
 	'/case-studies',
 	'/believe',
+	'/about',
+	'/contact',
 	...withAgents.map((agent) => withAgentHref(agent.slug)),
 	'/blog',
 	'/community',

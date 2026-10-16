@@ -21,6 +21,7 @@ import {
 	isComputeOverageLimitError,
 	isEntitlementLimitError,
 	isJobIntervalFloorError,
+	retryAfterSecondsForQuotaLimit,
 } from '#worker/entitlements/errors.ts'
 import {
 	ArtifactsGitUnavailableError,
@@ -198,7 +199,9 @@ export function toApiError(error: unknown): ApiError {
 			code: 'entitlement_limit',
 			message: getErrorMessage(limitError),
 			details: limitError.details,
-			headers: { 'Retry-After': '60' },
+			headers: {
+				'Retry-After': String(retryAfterSecondsForQuotaLimit(limitError)),
+			},
 			cause: error,
 		})
 	}

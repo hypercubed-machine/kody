@@ -63,9 +63,17 @@ OpenAPI `Error` schema. Operations document the common 4xx/5xx statuses (and
 `default`) with that response.
 
 The edge rate-limits requests per IP and per API token. **Every HTTP 429
-includes `Retry-After` (seconds).** Honor it before retrying. Kody does not send
-`RateLimit-*` remaining/limit headers; the Cloudflare rate-limit binding only
-reports success or failure.
+includes `Retry-After` (seconds).** Honor it before retrying. For
+`rate_limited`, that is the limiter window. For `entitlement_limit`, it is time
+until the metered window resets (day / week / month); standing or per-item
+limits that need user action still send a long backoff so clients do not hammer,
+but retry alone will not restore capacity. Kody does not send `RateLimit-*`
+remaining/limit headers; the Cloudflare rate-limit binding only reports success
+or failure.
+
+`POST /v1/capability-proxy/gateway-fetch` is a streaming proxy: a successful hop
+returns the upstream status and body as-is (including upstream 4xx/5xx). Only
+Kody-generated hop failures use the Error schema (`default`).
 
 Compatibility for `/v1` and other public contracts is described in
 [Versioning and deprecation](./versioning-and-deprecation.md).

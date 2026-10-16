@@ -275,6 +275,48 @@ export function isEntitlementLimitError(
 	)
 }
 
+function nextUtcMonthStart(date: Date) {
+	return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1))
+}
+
+function secondsUntil(resetAt: Date, now: Date) {
+	return Math.max(1, Math.ceil((resetAt.getTime() - now.getTime()) / 1000))
+}
+
+/**
+ * `Retry-After` (seconds) for quota / include denials. Metered windows use
+ * time until reset; standing / per-item limits need user action, so the
+ * value is a long backoff (not a promise that retry alone will succeed).
+ */
+export function retryAfterSecondsForQuotaLimit(
+	error: EntitlementLimitError | ComputeOverageLimitError,
+	now: Date = new Date(),
+): number {
+	if (isComputeOverageLimitError(error)) {
+		return secondsUntil(nextUtcMonthStart(now), now)
+	}
+	const resourceWindow = entitlementResourceWindows[error.details.resource]
+	switch (resourceWindow) {
+		case 'utc_minute': {
+			const nextMinute = new Date(now)
+			nextMinute.setUTCSeconds(60, 0)
+			return secondsUntil(nextMinute, now)
+		}
+		case 'utc_day':
+			if (error.details.window === 'week') {
+				return secondsUntil(nextUtcWeekStart(now), now)
+			}
+			return secondsUntil(nextUtcDayStart(now), now)
+		case 'standing':
+		case 'per_item':
+			return 60 * 60
+		default: {
+			const exhaustive: never = resourceWindow
+			throw new Error(`Unknown resource window: ${String(exhaustive)}`)
+		}
+	}
+}
+
 export const jobIntervalFloorErrorCode = 'job_interval_floor' as const
 
 export type JobIntervalFloorErrorDetails = {

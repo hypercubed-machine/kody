@@ -89,9 +89,14 @@ test('every operation documents Error for common 4xx/5xx and default', async () 
 		'default',
 	]
 	const problems: Array<string> = []
+	const gatewayFetchPath = '/v1/capability-proxy/gateway-fetch'
 	for (const [path, methods] of Object.entries(document.paths)) {
 		for (const [method, operation] of Object.entries(methods)) {
-			for (const status of requiredStatuses) {
+			// Gateway-fetch forwards upstream status/body on a successful hop,
+			// so numeric 4xx/5xx must not claim the Kody Error schema.
+			const statuses =
+				path === gatewayFetchPath ? (['default'] as const) : requiredStatuses
+			for (const status of statuses) {
 				const response = operation.responses[status]
 				if (
 					!response ||
@@ -99,6 +104,21 @@ test('every operation documents Error for common 4xx/5xx and default', async () 
 						'#/components/responses/Error'
 				) {
 					problems.push(`${method.toUpperCase()} ${path} missing ${status}`)
+				}
+			}
+			if (path === gatewayFetchPath) {
+				for (const status of requiredStatuses) {
+					if (status === 'default') continue
+					const response = operation.responses[status]
+					if (
+						response &&
+						(response as { $ref?: string }).$ref ===
+							'#/components/responses/Error'
+					) {
+						problems.push(
+							`${method.toUpperCase()} ${path} must not advertise ${status} as Error`,
+						)
+					}
 				}
 			}
 		}

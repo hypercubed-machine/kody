@@ -314,7 +314,7 @@ function buildGatewayFetchStreamOperation(
 		responses: {
 			'200': {
 				description:
-					'Upstream HTTP response: status, headers, and body, streamed. Not a JSON envelope.',
+					'Upstream HTTP response streamed as-is (status, headers, body). Upstream 4xx/5xx keep the outbound status and body — they are not the Kody Error envelope. Only Kody-generated hop failures use Error (`default`).',
 				content: {
 					'*/*': {
 						schema: { type: 'string', format: 'binary' },
@@ -322,7 +322,10 @@ function buildGatewayFetchStreamOperation(
 					},
 				},
 			},
-			...openApiErrorResponses,
+			// Do not list numeric 4xx/5xx as Error: a successful hop forwards
+			// upstream statuses unchanged. Kody errors before/during the hop
+			// still use the shared Error response via `default`.
+			default: openApiErrorResponseRef,
 		},
 		security: [{ apiToken: [] }],
 		'x-kody-permission': resolved.permission,
@@ -500,9 +503,9 @@ function buildDocumentBody(registry: BuiltCapabilityRegistry) {
 				'Authenticate with `Authorization: Bearer kody_at_…`. Tokens are minted by the MCP `api` tool (`tokenCreate`) or by another token, and each carries explicit org-permission scopes. There is no write-implies-read hierarchy.',
 				apiTokenIdleTtlDescription(),
 				'',
-				'Errors use `{ "error": { "code", "message", "details"? } }` (`components.schemas.Error` / `components.responses.Error`). Every operation lists the common 4xx/5xx statuses plus `default`, all pointing at that Error response.',
+				'Errors use `{ "error": { "code", "message", "details"? } }` (`components.schemas.Error` / `components.responses.Error`). Ordinary operations list the common 4xx/5xx statuses plus `default`, all pointing at that Error response. `POST /v1/capability-proxy/gateway-fetch` is different: a successful hop streams the upstream status and body (including upstream 4xx/5xx); only Kody hop failures use Error via `default`.',
 				'',
-				'Requests are rate limited per IP and per token. Every HTTP 429 includes `Retry-After` (seconds). Remaining/limit counters are not exposed as `RateLimit-*` headers (the edge rate-limit binding does not provide them).',
+				'Requests are rate limited per IP and per token. Every HTTP 429 includes `Retry-After` (seconds). For `entitlement_limit`, that is time until the metered window resets (or a long backoff for standing limits that need user action). Remaining/limit counters are not exposed as `RateLimit-*` headers (the edge rate-limit binding does not provide them).',
 				'',
 				'`operationId` values match Kody capability names, so the same ids work with the MCP `api` tool (`{ operationId, params }`, where params hold path, query, and body fields flat).',
 				'',

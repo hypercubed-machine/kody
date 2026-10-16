@@ -52,6 +52,8 @@ test('anonymous marketing HTML is cacheable only without a session', () => {
 		'/faq',
 		'/case-studies',
 		'/believe',
+		'/about',
+		'/contact',
 		'/onboarding',
 		'/onboarding/step-1',
 		'/docs',
