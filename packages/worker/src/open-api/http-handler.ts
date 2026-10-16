@@ -31,6 +31,7 @@ import {
 	isCapabilityProxyOperation,
 	isCliCredentialBootstrapRedeemOperation,
 } from './invoke.ts'
+import { defaultRetryAfterSeconds } from '#worker/http-retry-after.ts'
 import { runCapabilityProxyGatewayFetchStream } from './capability-proxy-gateway-fetch-stream.ts'
 import { parseNativeInput } from './native-operation-helpers.ts'
 import {
@@ -376,6 +377,17 @@ async function handleCapabilityProxyGatewayFetchStream(input: {
 			})
 		}
 		outcome = 'success'
+		// Platform contract: every HTTP 429 includes Retry-After, including
+		// upstream 429s streamed through gateway-fetch.
+		if (response.status === 429 && !response.headers.has('Retry-After')) {
+			const headers = new Headers(response.headers)
+			headers.set('Retry-After', String(defaultRetryAfterSeconds))
+			return new Response(response.body, {
+				status: response.status,
+				statusText: response.statusText,
+				headers,
+			})
+		}
 		return response
 	} catch (error) {
 		const apiError = toApiError(error)
