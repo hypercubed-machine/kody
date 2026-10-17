@@ -19,7 +19,9 @@ permissions:
 
 jobs:
   publish:
-    runs-on: warp-ubuntu-latest-x64-4x
+    # Stay on GitHub-hosted runners: npm provenance (sigstore) rejects
+    # self-hosted runners like WarpBuild with E422, so publishing fails there.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: 📦 Checkout
