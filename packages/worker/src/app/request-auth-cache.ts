@@ -23,6 +23,7 @@ import {
 	parseUserRolesAndPermissionRows,
 	type PermissionRow,
 } from '#worker/identity/permissions-db.ts'
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	resolveDisplayName,
 	resolveStoredDisplayName,
@@ -78,14 +79,14 @@ export type ResolvedRequestAuth = {
 
 const requestAuthStore = new WeakMap<Request, Promise<ResolvedRequestAuth>>()
 
-const authUserLookupSql = `select * from "users" where ("stable_user_id" = ?)`
+const authUserLookupSql = `select * from "users" where ("stable_user_id" = ?)${andLiveDeletedAtSql()}`
 const authRolesLookupSql = `SELECT DISTINCT r.name AS role_name, p.action, p.entity, p.access
 			 FROM user_roles ur
 			 INNER JOIN roles r ON r.id = ur.role_id
 			 INNER JOIN users u ON u.id = ur.user_id
 			 LEFT JOIN role_permissions rp ON rp.role_id = r.id
 			 LEFT JOIN permissions p ON p.id = rp.permission_id
-			 WHERE u.stable_user_id = ?`
+			 WHERE u.stable_user_id = ?${andLiveDeletedAtSql('u')}`
 
 function d1ResultRows<T>(result: D1Result<T> | undefined): Array<T> {
 	return result?.results ?? []
@@ -118,6 +119,9 @@ async function loadUserAndRoles(
 		return { userRecord, roles, permissions }
 	} catch (error) {
 		console.error('Failed to load roles for authenticated user:', error)
+		// Fallback: usersTable.findOne does not include deleted_at. Soft-deleted
+		// users that slip through here are caught by the defense-in-depth guard
+		// in readAuthenticatedAppUserInternal when loadOrgBindingForPerson throws.
 		const db = createDb(env.APP_DB)
 		const userRecord = await db.findOne(usersTable, {
 			where: { stable_user_id: stableUserId },

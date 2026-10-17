@@ -48,10 +48,21 @@ async function readAuthenticatedAppUserInternal(
 		env,
 		resolved.user.mcpUser.userId,
 	)
-	const orgBinding =
-		resolution === 'personal' || resolution === 'denied'
-			? await loadOrgBindingForPerson(env.APP_DB, resolved.user.mcpUser.userId)
-			: resolution
+	let orgBinding
+	try {
+		orgBinding =
+			resolution === 'personal' || resolution === 'denied'
+				? await loadOrgBindingForPerson(
+						env.APP_DB,
+						resolved.user.mcpUser.userId,
+					)
+				: resolution
+	} catch {
+		// Defense in depth: if the personal-org membership is missing (e.g.
+		// soft-deleted user that slipped past the auth lookup filter), fail
+		// closed rather than letting the throw surface as a Remix 500.
+		return null
+	}
 	const user = {
 		sessionUserId: resolved.sessionUserId,
 		userId: resolved.user.userId,

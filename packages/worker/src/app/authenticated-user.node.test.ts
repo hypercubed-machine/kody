@@ -38,10 +38,16 @@ function createUsersDb(
 	options: {
 		user?: Record<string, unknown>
 		rolesError?: boolean
+		orgBindingMissing?: boolean
 		counts?: { batch: number; flagPrepares: number }
 	} = {},
 ) {
-	const { user, rolesError = false, counts } = options
+	const {
+		user,
+		rolesError = false,
+		orgBindingMissing = false,
+		counts,
+	} = options
 	const env = {
 		APP_DB: {
 			prepare(query: string) {
@@ -62,6 +68,7 @@ function createUsersDb(
 								normalized.includes('join org_memberships')) &&
 							normalized.includes('join orgs')
 						) {
+							if (orgBindingMissing) return null
 							const slug =
 								typeof user?.username === 'string' ? user.username : 'html-user'
 							return {
@@ -78,6 +85,12 @@ function createUsersDb(
 							throw new Error('D1 unavailable')
 						}
 						if (user && normalized.includes('from "users"')) {
+							if (
+								user.deleted_at &&
+								normalized.includes('deleted_at is null')
+							) {
+								return { results: [], meta: { changes: 0 } }
+							}
 							return {
 								results: [
 									{ id: 7, email, stable_user_id: stableUserId, ...user },
@@ -151,6 +164,32 @@ test('deleting accounts are invalid for normal requests but can retry deletion',
 	).resolves.toEqual(
 		expect.objectContaining({ userId: 7, username: 'deleting-user' }),
 	)
+})
+
+test('soft-deleted users (deleted_at set) resolve to null with cookie destroyed', async () => {
+	const env = createUsersDb({
+		user: {
+			username: 'deleted-user',
+			deleted_at: '2026-10-15 12:00:00',
+		},
+	})
+	const result = await readAuthenticatedAppUser(
+		await sessionRequest('https://example.com/account/organizations.json'),
+		env,
+	)
+	expect(result).toBeNull()
+})
+
+test('missing personal-org binding fails closed without throwing', async () => {
+	const env = createUsersDb({
+		user: { username: 'orphan-user' },
+		orgBindingMissing: true,
+	})
+	const result = await readAuthenticatedAppUser(
+		await sessionRequest('https://example.com/account/organizations.json'),
+		env,
+	)
+	expect(result).toBeNull()
 })
 
 test('readAuthenticatedAppUser prefetches flags only when HTML pages opt in', async () => {
