@@ -18,6 +18,7 @@ import {
 } from '@kody-internal/shared/error-message.ts'
 import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
 import { resolvePublicUsername } from '#worker/identity/user-lookup.ts'
 import {
@@ -560,7 +561,8 @@ async function resolvePublishedHostedAppUrl(input: {
 	baseUrl: string
 	ownerScope: string
 	ownerEmail: string
-	kodyId: string
+	/** Scoped package name. The hosted path uses its leaf, not a stale kody id. */
+	name: string
 	hasApp: boolean
 }) {
 	if (!input.hasApp) return null
@@ -570,17 +572,18 @@ async function resolvePublishedHostedAppUrl(input: {
 		email: input.ownerEmail,
 	})
 	if (!username) return null
+	const hostedKodyId = getPackageNameLeaf(input.name)
 	const canonical = await resolvePublicPackageAppLocation({
 		env: input.env,
 		username,
-		kodyId: input.kodyId,
+		kodyId: hostedKodyId,
 	})
 	if (canonical) return canonical.hostedUrl
 	return resolveHostedPackageAppUrl({
 		packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
 		appBaseUrl: input.baseUrl,
 		username,
-		kodyId: input.kodyId,
+		kodyId: hostedKodyId,
 	})
 }
 
@@ -756,6 +759,7 @@ async function runExternalPublishAttempt(input: {
 	expectedPackageScope: string
 	packageId: string
 	kodyId: string
+	name: string
 	hasApp: boolean
 	source: {
 		id: string
@@ -896,7 +900,7 @@ async function runExternalPublishAttempt(input: {
 									baseUrl: input.baseUrl,
 									ownerScope: input.ownerScope,
 									ownerEmail: input.ownerEmail,
-									kodyId: input.kodyId,
+									name: input.name,
 									hasApp: input.hasApp,
 								}),
 								static_dependents: await getPublishStaticDependents({
@@ -1080,7 +1084,7 @@ async function runExternalPublishAttempt(input: {
 								baseUrl: input.baseUrl,
 								ownerScope: input.ownerScope,
 								ownerEmail: input.ownerEmail,
-								kodyId: input.kodyId,
+								name: input.name,
 								hasApp: Boolean(testHints?.app),
 							}),
 							static_dependents: await getPublishStaticDependents({
@@ -1211,6 +1215,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				expectedPackageScope,
 				packageId,
 				kodyId,
+				name,
 				hasApp,
 				source: { id: source.id, repo_id: source.repo_id },
 				newCommit,

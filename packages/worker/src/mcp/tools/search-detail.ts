@@ -16,6 +16,7 @@ import {
 } from '#worker/integrations/service.ts'
 import { applySavedPackageForkListingAncestry } from '#worker/community/fork-listing-relation.ts'
 import { resolveSavedPackageRefWithCommunityProvenance } from '#worker/package-registry/repo.ts'
+import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 
 import { collectIntegrationPackageSuggestions } from './integration-package-suggestions.ts'
@@ -154,6 +155,7 @@ export async function resolveEntityDetail(input: {
 		})
 		const packageAppOrigin = getPackageAppBaseUrl({ env })
 		const ownerUsername = input.username
+		const hostedKodyId = getPackageNameLeaf(record.name)
 		return {
 			type: 'package' as const,
 			id: record.kodyId,
@@ -171,14 +173,14 @@ export async function resolveEntityDetail(input: {
 							await resolvePublicPackageAppLocation({
 								env,
 								username: ownerUsername,
-								kodyId: record.kodyId,
+								kodyId: hostedKodyId,
 							})
 						)?.hostedUrl ??
 						resolveHostedPackageAppUrl({
 							packageAppBaseUrl: packageAppOrigin,
 							appBaseUrl: input.callerContext.baseUrl,
 							username: ownerUsername,
-							kodyId: record.kodyId,
+							kodyId: hostedKodyId,
 						}))
 					: null,
 			...(ref.section ? { section: ref.section } : {}),

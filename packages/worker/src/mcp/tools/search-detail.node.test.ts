@@ -404,6 +404,33 @@ test('resolveEntityDetail hostedUrl uses PACKAGE_APP_BASE_URL when configured', 
 	})
 })
 
+test('resolveEntityDetail hostedUrl uses the package name leaf when kodyId lags', async () => {
+	mockModule.resolveSavedPackageRef.mockResolvedValue({
+		packageId: 'pkg-1',
+		kodyId: 'stale-id',
+		name: '@user/demo',
+		description: 'Demo package',
+		hasApp: true,
+		sourceId: 'source-1',
+	})
+	mockModule.getSavedPackageById.mockResolvedValue(null)
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
+		manifest: { kody: {} },
+		files: {},
+	})
+
+	const detail = await resolve('package:stale-id', {
+		agent: createAgent({
+			baseUrl: 'https://heykody.dev',
+			env: { PACKAGE_APP_BASE_URL: 'https://kody.run' },
+		}),
+		username: 'kentcdodds',
+	})
+	expect(detail).toMatchObject({
+		hostedUrl: 'https://kentcdodds.kody.run/packages/demo',
+	})
+})
+
 test('resolveEntityDetail passes package export fragments and hidden known-id packages', async () => {
 	mockModule.resolveSavedPackageRef.mockResolvedValue({
 		id: 'pkg-hidden',
