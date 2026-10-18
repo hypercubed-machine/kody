@@ -806,6 +806,123 @@ test('mailbox paging resumes without duplicate or missing rows', async () => {
 	])
 })
 
+test('empty mailbox owners share progress writes across a wave', async () => {
+	const owners = Array.from({ length: 16 }, (_, index) =>
+		ownerIdFromStored(`user-${String(index).padStart(2, '0')}`),
+	)
+	mailboxMocks.exportMailbox.mockReset()
+	mailboxMocks.exportMailbox.mockResolvedValue({
+		rows: [],
+		truncated: false,
+		nextStartAfter: null,
+	})
+	mockRunLogPage()
+	mockStorageEntries([])
+	const { client, readText } = createMemoryS3()
+	let progressPuts = 0
+	const originalPut = client.put.bind(client)
+	client.put = async (key, body, options) => {
+		if (key.endsWith('/exporter/progress.json')) progressPuts += 1
+		return originalPut(key, body, options)
+	}
+	const env = createEnv({
+		APP_DB: createDb({
+			users: owners.map((ownerId) => ({ ownerId })),
+		}),
+		MAILBOX: {},
+		RUN_LOG: {},
+	})
+
+	const result = await runDrExportTick({
+		env,
+		now: at('01:00'),
+		timeBudgetMs: 60_000,
+		s3: client,
+	})
+	expect(result.summaryWritten).toBe(true)
+	expect(result.mailboxDumpsCompleted).toBe(owners.length)
+	expect(result.runLogDumpsCompleted).toBe(owners.length)
+	expect(mailboxMocks.exportMailbox).toHaveBeenCalledTimes(owners.length)
+	expect(runLogMocks.exportRuns).toHaveBeenCalledTimes(owners.length)
+	// One persist per owner would be 32 lane writes plus lease and phase
+	// transitions. Waves of 8 keep the whole tick well under that.
+	expect(progressPuts).toBeLessThan(30)
+	const mailboxIndex = JSON.parse(
+		await readText(stagingMailboxIndexKey(day)),
+	) as { entries: Array<{ ownerId: string; entryCount: number }> }
+	expect(mailboxIndex.entries.map((entry) => entry.ownerId).sort()).toEqual(
+		[...owners].sort(),
+	)
+	expect(mailboxIndex.entries.every((entry) => entry.entryCount === 0)).toBe(
+		true,
+	)
+})
+
+test('an in-progress mailbox dump resumes before a newly inserted earlier owner', async () => {
+	const calls: Array<string | null> = []
+	mailboxMocks.exportMailbox.mockReset()
+	mailboxMocks.exportMailbox.mockImplementation(
+		async (input: { startAfter?: string | null }) => {
+			const startAfter = input.startAfter ?? null
+			calls.push(startAfter)
+			if (startAfter === 'message:page-1') {
+				return {
+					rows: [{ kind: 'message', row: { id: 'page-2' } }],
+					truncated: false,
+					nextStartAfter: null,
+				}
+			}
+			return {
+				rows: [{ kind: 'message', row: { id: 'page-1' } }],
+				truncated: true,
+				nextStartAfter: 'message:page-1',
+			}
+		},
+	)
+	mockRunLogPage()
+	const users = [{ ownerId: ownerIdFromStored('user-b') }]
+	const { client, readNdjson } = createMemoryS3()
+	using budget = useBudgetClock(client, (key, body) => {
+		return (
+			typeof body === 'string' &&
+			key.endsWith('/exporter/progress.json') &&
+			body.includes('"pageStartAfter":"message:page-1"')
+		)
+	})
+	const env = createEnv({
+		APP_DB: createDb({ users }),
+		MAILBOX: {},
+		RUN_LOG: {},
+	})
+
+	const tick1 = await runDrExportTick({
+		env,
+		now: at('01:00'),
+		timeBudgetMs: 20_000,
+		s3: client,
+	})
+	expect(tick1).toMatchObject({
+		timeBudgetExhausted: true,
+		mailboxDumpsCompleted: 0,
+	})
+
+	users.unshift({ ownerId: ownerIdFromStored('user-a') })
+	budget.clock.nowMs = 1_000_000
+	const tick2 = await runDrExportTick({
+		env,
+		now: at('01:05'),
+		timeBudgetMs: 200_000,
+		s3: client,
+	})
+	expect(tick2.summaryWritten).toBe(true)
+	expect(calls[0]).toBeNull()
+	expect(calls[1]).toBe('message:page-1')
+	const largeDump = await readNdjson<{ row: { id: string } }>(
+		stagingMailboxDumpKey(day, ownerIdFromStored('user-b')),
+	)
+	expect(largeDump.map((line) => line.row.id)).toEqual(['page-1', 'page-2'])
+})
+
 test('inventory drift between ticks neither duplicates nor skips storage dumps', async () => {
 	mockStorageEntries([{ key: 'k', value: 1 }])
 	const { client, readText } = createMemoryS3()
@@ -1222,6 +1339,22 @@ test('watchdog passes on a written summary and fails loudly on incomplete or str
 		summaryPresent: false,
 		reason: 'deferred-for-older-stranded',
 	})
+
+	// Still advancing, but the oldest stranded day is two UTC days behind.
+	// That pace loses to the calendar and must page even though a tick is moving.
+	const lagging = createMemoryS3()
+	await lagging.client.put(
+		'staging/2026-07-21/exporter/progress.json',
+		JSON.stringify({
+			...__testOnlyCreateInitialProgress('2026-07-21', at('00:30')),
+			leaseExpiresAt: null,
+			advancedAt: new Date(now.getTime() - 5 * 60_000).toISOString(),
+			revision: 20,
+		}),
+	)
+	await expect(watchdog(lagging.client)).rejects.toThrow(
+		/DR staging lag: oldest stranded day 2026-07-21 is 2 UTC days behind 2026-07-23/,
+	)
 
 	// Older stranded day with a cold advancedAt: page as catch-up stuck.
 	const staleOlder = createMemoryS3()
