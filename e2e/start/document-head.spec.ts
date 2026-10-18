@@ -22,10 +22,14 @@ test('hydration preserves a browser extension toolbar color override', async ({
 		observer.observe(document, { childList: true, subtree: true })
 	})
 	await page.goto('/pricing')
-	// The toggle's controlled aria-expanded state proves handlers are attached.
+	// A native popover can open before hydration attaches its toggle handler.
+	// Retry this readiness probe while the cold CI client finishes loading.
 	const features = page.getByRole('button', { name: 'Features', exact: true })
-	await features.click()
-	await expect(features).toHaveAttribute('aria-expanded', 'true')
+	await expect(async () => {
+		await page.keyboard.press('Escape')
+		await features.click()
+		await expect(features).toHaveAttribute('aria-expanded', 'true')
+	}).toPass({ timeout: 30_000 })
 	const documentNavigations: Array<string> = []
 	page.on('request', (request) => {
 		if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
