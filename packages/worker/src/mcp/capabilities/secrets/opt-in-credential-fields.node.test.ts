@@ -338,7 +338,7 @@ test('credentialUpdate sets provider and inject by credential id for a writer on
 		name: 'resendKey',
 		provider: 'resend',
 		inject: { kind: 'query', param: 'api_key' },
-		placement: null,
+		placement: { headers: true },
 	})
 	await expect(
 		credentialUpdateCapability.handler(
@@ -549,23 +549,29 @@ test('every value write path checks an opt-in credential against its stored kind
 	expect((await t.entry('deploy-hook'))?.kind).toBe('url')
 })
 
-test('placement updates an existing Key without a value, audited, and leaves it null by default', async () => {
+test('new Keys default to headers-only; placement updates audit and can clear to anywhere', async () => {
 	const t = await setup()
 	await t.set({ name: 'apiKey', value: 'sk_value' })
-	expect((await t.entry('apiKey'))?.placement_json).toBeNull()
-	const saved = await t.set({
-		name: 'apiKey',
-		placement: { headers: true },
-	})
-	expect(saved).toMatchObject({
-		placement: { headers: true },
-	})
 	expect(JSON.parse((await t.entry('apiKey'))!.placement_json!)).toEqual({
 		headers: true,
 	})
+	const widened = await t.set({
+		name: 'apiKey',
+		placement: { headers: true, body: true },
+	})
+	expect(widened).toMatchObject({
+		placement: { headers: true, body: true },
+	})
+	expect(JSON.parse((await t.entry('apiKey'))!.placement_json!)).toEqual({
+		headers: true,
+		body: true,
+	})
 	const audits = await t.audits('credential.fields_updated')
 	expect(audits[0]?.details).toMatchObject({
-		placement: { before: null, after: { headers: true } },
+		placement: {
+			before: { headers: true },
+			after: { headers: true, body: true },
+		},
 	})
 	const cleared = await t.set({ name: 'apiKey', placement: null })
 	expect(cleared).toMatchObject({ placement: null })

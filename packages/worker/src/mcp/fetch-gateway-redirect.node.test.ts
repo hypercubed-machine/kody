@@ -73,6 +73,7 @@ function userSecret(
 		scope: 'user',
 		allowedHosts,
 		allowedPackages,
+		placement: null,
 	}
 }
 

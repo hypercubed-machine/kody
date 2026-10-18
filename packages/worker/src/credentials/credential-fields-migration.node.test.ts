@@ -103,6 +103,14 @@ test('0111 backfills integration providers from their OAuth app and defaults inj
 test('connecting or reconnecting an integration records its OAuth app provider', async () => {
 	const sqlite = databaseBeforeMigration()
 	runMigration(sqlite)
+	// Live upserts write placement_json (0163); apply it so the writer matches
+	// today's schema without re-running the whole ledger.
+	sqlite.exec(
+		readFileSync(
+			new URL('0163-credential-fill-placement.sql', migrationsDirectory),
+			'utf8',
+		),
+	)
 	const db = createD1FromSqlite(sqlite)
 	const row: Parameters<typeof upsertIntegrationConnection>[0]['row'] = {
 		user_id: 'org-a',

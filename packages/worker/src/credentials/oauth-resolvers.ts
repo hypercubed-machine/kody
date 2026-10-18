@@ -11,6 +11,7 @@ import {
 	resolveIntegrationAccessToken,
 } from '#worker/integrations/credentials.ts'
 import { assertCanUseIntegration } from '#worker/integrations/package-access.ts'
+import { getIntegrationFillPlacement } from '#worker/integrations/repo.ts'
 import { getJoinedIntegration } from '#worker/integrations/service.ts'
 import { refreshIntegrationTokens } from '#worker/integrations/token-refresh.ts'
 import { assertIntegrationAllowsHost } from '#mcp/execute-modules/integration-host-allowlist.ts'
@@ -21,6 +22,8 @@ import {
 	type CredentialTargetFor,
 	type ResolverCall,
 } from './credential-resolver.ts'
+import { rememberFetchFillPlacement } from './fetch-fill-placement-cache.ts'
+import { observeFillPlacementWouldBlockSites } from './fill-placement.ts'
 import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 
 type IntegrationNameLookup = {
@@ -142,6 +145,26 @@ export const integrationTokenResolver: CredentialResolver<'integration-token'> =
 			return {
 				async authorize() {
 					await authorizeIntegrationUse(call, lookup)
+					if (credential.fillSites && credential.fillSites.length > 0) {
+						const placement = await getIntegrationFillPlacement({
+							db: input.env.APP_DB,
+							userId: lookup.ownerId,
+							name: credential.name,
+						})
+						rememberFetchFillPlacement({
+							actor: call.input.actor,
+							orgId: call.input.orgId,
+							packageStamp: call.input.packageStamp,
+							credential,
+							placement,
+						})
+						observeFillPlacementWouldBlockSites({
+							credentialName: credential.name,
+							placement,
+							sites: credential.fillSites,
+							surface: 'placeholder',
+						})
+					}
 					if (!credential.requestHost) return
 					const joined = await getJoinedIntegration({
 						env: input.env,

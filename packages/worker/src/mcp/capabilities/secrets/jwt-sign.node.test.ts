@@ -67,6 +67,7 @@ function stubSecret(value: string | null) {
 		scope: value === null ? null : 'user',
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 	})
 }
 

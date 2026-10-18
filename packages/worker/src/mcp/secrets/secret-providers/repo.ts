@@ -4,7 +4,11 @@ import {
 } from './types.ts'
 
 import { credentialGrantCleanupStatements } from '#worker/credentials/credential-grant-cleanup.ts'
-import { readCredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+import {
+	defaultNewCredentialFillPlacement,
+	readCredentialFillPlacement,
+	serializeCredentialFillPlacement,
+} from '#worker/credentials/fill-placement.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 type BindingRow = {
 	id: string
@@ -106,9 +110,9 @@ export async function upsertSecretProviderBinding(
 		.prepare(
 			`INSERT INTO secret_provider_bindings (
 				user_id, provider_id, package_id, door_secret_name, config_json,
-				source_json, created_at, updated_at
+				source_json, placement_json, created_at, updated_at
 			) VALUES (
-				?, ?, ?, ?, ?, json_object('vault', ?), CURRENT_TIMESTAMP,
+				?, ?, ?, ?, ?, json_object('vault', ?), ?, CURRENT_TIMESTAMP,
 				CURRENT_TIMESTAMP
 			)
 			ON CONFLICT(user_id, provider_id) DO UPDATE SET
@@ -124,6 +128,7 @@ export async function upsertSecretProviderBinding(
 			input.doorSecretName,
 			input.configJson,
 			input.providerId,
+			serializeCredentialFillPlacement(defaultNewCredentialFillPlacement),
 		)
 		.run()
 }

@@ -50,6 +50,7 @@ vi.mock('#mcp/secrets/service.ts', () => {
 		value: 'legacy-secret-store-value',
 		allowedHosts: [],
 		allowedPackages: ['pkg-1'],
+		placement: null,
 		scope: 'user',
 	}))
 	return {
@@ -152,6 +153,7 @@ test('inbound verification tries a declared secretName before the stored generat
 		value: 'legacy-secret-store-value',
 		allowedHosts: [],
 		allowedPackages: ['pkg-1'],
+		placement: null,
 		scope: 'user',
 	})
 	const secrets = await resolveSecrets({
@@ -180,6 +182,7 @@ test('inbound verification lists a stored copy of the declared secret once', asy
 		value: 'legacy-secret-store-value',
 		allowedHosts: [],
 		allowedPackages: ['pkg-1'],
+		placement: null,
 		scope: 'user',
 	})
 	const secrets = await resolveSecrets({
@@ -237,6 +240,7 @@ test('an unreadable stored secret does not block a resolved declared secret', as
 		value: 'legacy-secret-store-value',
 		allowedHosts: [],
 		allowedPackages: ['pkg-1'],
+		placement: null,
 		scope: 'user',
 	})
 	const unreadable = await trackedDeclaredEndpoint({
@@ -414,6 +418,7 @@ test('signing-secret rotation: previous value verifies within the 24h grace wind
 		value: 'stripe-signing-secret-v2',
 		allowedHosts: [],
 		allowedPackages: ['pkg-1'],
+		placement: null,
 		scope: 'user',
 	})
 	const withinGrace = await getWebhookEndpointByIdForUser({
@@ -457,6 +462,7 @@ test('signing-secret rotation: previous value is rejected after the grace window
 		value: 'stripe-signing-secret-v2',
 		allowedHosts: [],
 		allowedPackages: ['pkg-1'],
+		placement: null,
 		scope: 'user',
 	})
 	const afterGrace = new Date(
@@ -502,6 +508,7 @@ test('signing-secret rotation: new secret verifies and an unrelated secret does 
 		value: 'stripe-signing-secret-v2',
 		allowedHosts: [],
 		allowedPackages: ['pkg-1'],
+		placement: null,
 		scope: 'user',
 	})
 	const endpoint = await getWebhookEndpointByIdForUser({
@@ -617,6 +624,7 @@ test('secretName rename records previous identity and accepts the old value with
 		value: 'stripe-signing-secret-renamed',
 		allowedHosts: [],
 		allowedPackages: ['pkg-1'],
+		placement: null,
 		scope: 'user',
 	})
 	const secrets = await resolveSecrets({

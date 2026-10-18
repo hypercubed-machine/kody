@@ -178,6 +178,7 @@ function userSecret(
 		scope: 'user',
 		allowedHosts,
 		allowedPackages,
+		placement: null,
 	}
 }
 
@@ -1030,6 +1031,7 @@ test('fetch gateway preserves request bodies and honors opt-out for text and bin
 					scope: null,
 					allowedHosts: [],
 					allowedPackages: [],
+					placement: null,
 				},
 	)
 	const transformedTextMultipart = await expand(
@@ -1157,6 +1159,7 @@ test('fetch gateway derives Basic Auth header and enforces host approval', async
 						scope: null,
 						allowedHosts: [],
 						allowedPackages: [],
+						placement: null,
 					},
 		)
 	const tokenRequest = (authorization: string, init: RequestInit = {}) =>

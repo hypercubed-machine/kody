@@ -114,6 +114,7 @@ test('resolveSecret returns the first scope hit in precedence order and ignores 
 		scope: 'session',
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: { headers: true },
 	}
 	await expect(
 		resolveSecret({ env, userId, name, storageContext }),

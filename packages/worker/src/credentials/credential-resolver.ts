@@ -25,6 +25,7 @@ import {
 	credentialResource,
 	missingCredentialResource,
 } from './credential-ids.ts'
+import { type CredentialFillSite } from './fill-placement.ts'
 import { type PackageStamp } from './package-stamp.ts'
 import { type ResolvedLoginSession } from './login-resolver.ts'
 import {
@@ -108,6 +109,11 @@ export type CredentialTarget =
 			 * `credential.resolve` row. Other callers omit it.
 			 */
 			placements?: ReadonlyArray<CredentialFetchPlacement>
+			/**
+			 * Precise fill sites for placement observe/enforce (path vs query
+			 * split). Audit `placements` may still use combined `url`.
+			 */
+			fillSites?: ReadonlyArray<CredentialFillSite>
 	  }
 	/** `packageSecrets.get` / `.has`: a declared `kody.secretMounts` alias. */
 	| {
@@ -137,6 +143,8 @@ export type CredentialTarget =
 			 * `credential.resolve` row. Other callers omit it.
 			 */
 			placements?: ReadonlyArray<CredentialFetchPlacement>
+			/** Precise fill sites for placement observe/enforce. */
+			fillSites?: ReadonlyArray<CredentialFillSite>
 	  }
 	/** `{{integration-token:…}}` and webhook apply integration auth. */
 	| {
@@ -149,6 +157,8 @@ export type CredentialTarget =
 			 * `credential.resolve` row. Other callers omit it.
 			 */
 			placements?: ReadonlyArray<CredentialFetchPlacement>
+			/** Precise fill sites for placement observe/enforce. */
+			fillSites?: ReadonlyArray<CredentialFillSite>
 	  }
 	/** `integrationTokenRefresh` and webhook apply 401 retry. */
 	| {

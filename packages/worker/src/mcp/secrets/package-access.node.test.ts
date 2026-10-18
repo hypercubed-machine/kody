@@ -77,6 +77,7 @@ const userSecretResolved = {
 	scope: 'user' as const,
 	allowedHosts: [] as Array<string>,
 	allowedPackages: [] as Array<string>,
+	placement: null,
 }
 const grantedToPkg1 = { ...userSecretResolved, allowedPackages: ['pkg-1'] }
 const discordMount = {
@@ -324,6 +325,7 @@ test('package approval helpers parse structured messages and skip trusted packag
 		value: 'bot-token',
 		scope: 'user',
 		allowedPackages: [],
+		placement: null,
 	})
 	const entries = await findMissingPackageApprovals(approvalsInput)
 	expect(entries).toHaveLength(1)
@@ -361,6 +363,7 @@ test('findMissingPackageApprovals uses the team org slug and keeps empty links s
 		value: 'bot-token',
 		scope: 'user',
 		allowedPackages: [],
+		placement: null,
 	})
 	mockModule.getOrgById.mockResolvedValueOnce({ slug: 'acme' })
 	const teamEntries = await findMissingPackageApprovals({
@@ -386,6 +389,7 @@ test('findMissingPackageApprovals uses the team org slug and keeps empty links s
 		value: 'bot-token',
 		scope: 'user',
 		allowedPackages: [],
+		placement: null,
 	})
 	mockModule.getOrgById.mockResolvedValueOnce(null)
 	const unresolved = await findMissingPackageApprovals({

@@ -4,6 +4,10 @@ import {
 } from '@kody-internal/shared/chunk.ts'
 import { earliestSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
 import { credentialGrantCleanupStatements } from '#worker/credentials/credential-grant-cleanup.ts'
+import {
+	defaultNewCredentialFillPlacement,
+	serializeCredentialFillPlacement,
+} from '#worker/credentials/fill-placement.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	type SecretBucketRow,
@@ -13,10 +17,15 @@ import {
 	storedCredentialKinds,
 } from './types.ts'
 
+/** Headers-only default written on classic Key insert (not on conflict update). */
+const newCredentialPlacementJson = serializeCredentialFillPlacement(
+	defaultNewCredentialFillPlacement,
+)!
+
 const listPackageScopeSecretFixedBindings = 2
 
 const secretEntryColumns =
-	'id, bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages, expires_at, created_at, updated_at'
+	'id, bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages, expires_at, created_at, updated_at, placement_json'
 
 type SecretMetadataRow = {
 	id: string
@@ -31,7 +40,11 @@ type SecretMetadataRow = {
 	expires_at: string | null
 }
 
-type SecretEntryLookup = SecretEntryRow & { kind: StoredCredentialKind }
+type SecretEntryLookup = SecretEntryRow & {
+	kind: StoredCredentialKind
+	/** Null means anywhere. */
+	placement_json: string | null
+}
 
 /**
  * Concurrent identical bucket lookups (fetch-gateway resolving N secrets via
@@ -188,6 +201,8 @@ function mapSecretEntryLookup(
 	return {
 		...mapSecretEntryRow(row),
 		kind: readStoredCredentialKind(row['kind']),
+		placement_json:
+			row['placement_json'] == null ? null : String(row['placement_json']),
 	}
 }
 
@@ -335,13 +350,16 @@ function prepareUpsertSecretEntryStatement(input: {
 		created_at?: string
 		updated_at?: string
 	}
+	/** Set only on insert; conflict updates leave the existing placement. */
+	newCredentialPlacementJson: string
 }): D1PreparedStatement {
 	const now = new Date().toISOString()
 	return input.db
 		.prepare(
 			`INSERT INTO secret_entries (
-				bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages, expires_at, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages,
+				expires_at, created_at, updated_at, placement_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(bucket_id, name)
 			DO UPDATE SET
 				description = excluded.description,
@@ -361,6 +379,7 @@ function prepareUpsertSecretEntryStatement(input: {
 			input.row.expires_at,
 			input.row.created_at ?? now,
 			input.row.updated_at ?? now,
+			input.newCredentialPlacementJson,
 		)
 }
 
@@ -434,7 +453,10 @@ export async function upsertSecretEntry(input: {
 		updated_at?: string
 	}
 }): Promise<void> {
-	await prepareUpsertSecretEntryStatement(input).run()
+	await prepareUpsertSecretEntryStatement({
+		...input,
+		newCredentialPlacementJson,
+	}).run()
 }
 
 /**
@@ -454,7 +476,11 @@ export async function upsertSecretEntriesAtomically(input: {
 	if (input.rows.length === 0) return
 	await input.db.batch(
 		input.rows.map((row) =>
-			prepareUpsertSecretEntryStatement({ db: input.db, row }),
+			prepareUpsertSecretEntryStatement({
+				db: input.db,
+				row,
+				newCredentialPlacementJson,
+			}),
 		),
 	)
 }

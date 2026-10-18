@@ -107,7 +107,7 @@ export type CredentialFillSite =
 /**
  * Whether `site` is allowed by `placement`. Null placement allows everywhere.
  * Does not apply the per-request `headers-only` intersection; callers compose
- * that separately.
+ * that separately via {@link fillPlacementAllowsUnderResolution}.
  */
 export function fillPlacementAllows(
 	placement: CredentialFillPlacement | null,
@@ -132,6 +132,129 @@ export function fillPlacementAllows(
 		default: {
 			const exhaustive: never = site
 			throw new Error(`Unhandled fill site: ${String(exhaustive)}`)
+		}
+	}
+}
+
+/**
+ * Per-request `x-kody-secret-resolution` mode. `headers-only` intersects with
+ * placement (never widens it); the gateway also omits URL/body sources under
+ * that mode so those sites never reach resolve.
+ */
+export type SecretResolutionFillMode = 'on' | 'headers-only'
+
+/**
+ * Placement check composed with the per-request resolution mode.
+ * `headers-only` refuses every non-header site even when placement allows it.
+ */
+export function fillPlacementAllowsUnderResolution(
+	placement: CredentialFillPlacement | null,
+	site: CredentialFillSite,
+	resolutionMode: SecretResolutionFillMode,
+): boolean {
+	if (resolutionMode === 'headers-only' && site.part !== 'header') return false
+	return fillPlacementAllows(placement, site)
+}
+
+/** One label for logs and refusal messages (`header Authorization`, `body`, …). */
+export function fillPlacementSiteLabel(site: CredentialFillSite): string {
+	switch (site.part) {
+		case 'header':
+			return `header ${site.name}`
+		case 'query':
+			return 'query'
+		case 'path':
+			return 'path'
+		case 'body':
+			return 'body'
+		default: {
+			const exhaustive: never = site
+			throw new Error(`Unhandled fill site: ${String(exhaustive)}`)
+		}
+	}
+}
+
+/**
+ * Clear refusal copy for enforcement (and the would-block log). Never includes
+ * credential values.
+ */
+export function fillPlacementRefusalMessage(input: {
+	credentialName: string
+	site: CredentialFillSite
+	placement: CredentialFillPlacement | null
+}): string {
+	const allowed = fillPlacementPartLabels(input.placement).join(', ')
+	return `Credential "${input.credentialName}" may not fill ${fillPlacementSiteLabel(input.site)}. Allowed parts: ${allowed}.`
+}
+
+export type FillPlacementObserveSurface = 'placeholder' | 'credential-client'
+
+/**
+ * Observe-mode: log when a fill would be refused, without blocking. Structured
+ * fields only — never values or placeholders that carry secrets.
+ */
+export function observeFillPlacementWouldBlock(input: {
+	credentialName: string
+	placement: CredentialFillPlacement | null
+	site: CredentialFillSite
+	surface: FillPlacementObserveSurface
+	resolutionMode?: SecretResolutionFillMode
+}): void {
+	const mode = input.resolutionMode ?? 'on'
+	if (fillPlacementAllowsUnderResolution(input.placement, input.site, mode)) {
+		return
+	}
+	console.info('credential-fill-placement-would-block', {
+		credentialName: input.credentialName,
+		part: fillPlacementSiteLabel(input.site),
+		allowedParts: fillPlacementPartLabels(input.placement),
+		surface: input.surface,
+	})
+}
+
+/** Observe each site that would be refused. Dedupes identical sites. */
+export function observeFillPlacementWouldBlockSites(input: {
+	credentialName: string
+	placement: CredentialFillPlacement | null
+	sites: ReadonlyArray<CredentialFillSite>
+	surface: FillPlacementObserveSurface
+	resolutionMode?: SecretResolutionFillMode
+}): void {
+	const seen = new Set<string>()
+	for (const site of input.sites) {
+		const key = fillPlacementSiteLabel(site)
+		if (seen.has(key)) continue
+		seen.add(key)
+		observeFillPlacementWouldBlock({
+			credentialName: input.credentialName,
+			placement: input.placement,
+			site,
+			surface: input.surface,
+			resolutionMode: input.resolutionMode,
+		})
+	}
+}
+
+/**
+ * Fill site for a scoped `credential()` inject. Inject kinds today are only
+ * header, basic (Authorization header), and query — no path or body inject.
+ */
+export function fillSiteFromCredentialInject(
+	inject:
+		| { kind: 'header'; name: string }
+		| { kind: 'basic' }
+		| { kind: 'query' },
+): CredentialFillSite {
+	switch (inject.kind) {
+		case 'header':
+			return { part: 'header', name: inject.name }
+		case 'basic':
+			return { part: 'header', name: 'Authorization' }
+		case 'query':
+			return { part: 'query' }
+		default: {
+			const exhaustive: never = inject
+			throw new Error(`Unhandled inject: ${String(exhaustive)}`)
 		}
 	}
 }

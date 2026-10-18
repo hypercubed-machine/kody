@@ -62,6 +62,11 @@ import {
 	type ResolveCredentialInput,
 	type ResolvedCredential,
 } from './credential-resolver.ts'
+import { readFetchFillPlacement } from './fetch-fill-placement-cache.ts'
+import {
+	type CredentialFillSite,
+	observeFillPlacementWouldBlockSites,
+} from './fill-placement.ts'
 import { loginCredentialResolver } from './login-resolver.ts'
 import { mcpConnectionResolver } from './mcp-resolver.ts'
 import {
@@ -387,6 +392,60 @@ function rememberResolvedFetchAudit(input: {
 	})
 }
 
+function fetchCredentialObserveName(credential: CredentialTarget): string {
+	switch (credential.use) {
+		case 'secret':
+		case 'integration-token':
+			return credential.name
+		case 'provider-secret':
+			return `secret/${credential.provider.trim().toLowerCase()}`
+		case 'package-secret-mount':
+			return credential.alias
+		case 'webhook-secret':
+		case 'integration-refresh':
+			return credential.name
+		case 'mcp-connection':
+			return credential.serverName
+		case 'url':
+		case 'login':
+		case 'signing':
+		case 'client-key':
+		case 'client-oauth':
+		case 'client-oauth-refresh':
+			return credential.credentialId
+		default: {
+			const exhaustive: never = credential
+			throw new Error(`Unhandled credential use: ${String(exhaustive)}`)
+		}
+	}
+}
+
+function fetchFillSitesOf(
+	credential: CredentialTarget,
+): ReadonlyArray<CredentialFillSite> {
+	switch (credential.use) {
+		case 'secret':
+		case 'provider-secret':
+		case 'integration-token':
+			return credential.fillSites ?? []
+		case 'package-secret-mount':
+		case 'webhook-secret':
+		case 'integration-refresh':
+		case 'mcp-connection':
+		case 'url':
+		case 'login':
+		case 'signing':
+		case 'client-key':
+		case 'client-oauth':
+		case 'client-oauth-refresh':
+			return []
+		default: {
+			const exhaustive: never = credential
+			throw new Error(`Unhandled credential use: ${String(exhaustive)}`)
+		}
+	}
+}
+
 /**
  * Record fetch placements for a credential this request already resolved
  * successfully under the same org, package stamp, and storage buckets.
@@ -413,6 +472,18 @@ export function auditResolvedFetchPlacements(
 			subject,
 			outcome: { result: 'success' },
 		})
+	}
+	const fillPlacement = readFetchFillPlacement(input)
+	if (fillPlacement !== undefined) {
+		const sites = fetchFillSitesOf(input.credential)
+		if (sites.length > 0) {
+			observeFillPlacementWouldBlockSites({
+				credentialName: fetchCredentialObserveName(input.credential),
+				placement: fillPlacement,
+				sites,
+				surface: 'placeholder',
+			})
+		}
 	}
 	return true
 }

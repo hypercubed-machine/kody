@@ -41,6 +41,8 @@ import {
 	type CredentialResolver,
 	type ResolverCall,
 } from './credential-resolver.ts'
+import { rememberFetchFillPlacement } from './fetch-fill-placement-cache.ts'
+import { observeFillPlacementWouldBlockSites } from './fill-placement.ts'
 import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 
 function isFoundSecret(secret: ResolvedSecret) {
@@ -181,6 +183,21 @@ export const secretResolver: CredentialResolver<'secret'> = {
 						secretName: credential.name,
 						host: credential.requestHost,
 						scope: found.scope ?? credential.scope ?? 'user',
+					})
+				}
+				rememberFetchFillPlacement({
+					actor: call.input.actor,
+					orgId: call.input.orgId,
+					packageStamp: call.input.packageStamp,
+					credential,
+					placement: found.placement,
+				})
+				if (credential.fillSites && credential.fillSites.length > 0) {
+					observeFillPlacementWouldBlockSites({
+						credentialName: credential.name,
+						placement: found.placement,
+						sites: credential.fillSites,
+						surface: 'placeholder',
 					})
 				}
 			},
@@ -387,6 +404,23 @@ export const vaultSecretResolver: CredentialResolver<'provider-secret'> = {
 			// that was not found, then fails inside resolveProviderSecret.
 			async authorize() {
 				await authorizeActorUse(call, binding?.credentialId ?? null)
+				if (binding) {
+					rememberFetchFillPlacement({
+						actor: call.input.actor,
+						orgId: call.input.orgId,
+						packageStamp: call.input.packageStamp,
+						credential,
+						placement: binding.placement,
+					})
+					if (credential.fillSites && credential.fillSites.length > 0) {
+						observeFillPlacementWouldBlockSites({
+							credentialName: `secret/${normalizeProviderId(credential.provider)}`,
+							placement: binding.placement,
+							sites: credential.fillSites,
+							surface: 'placeholder',
+						})
+					}
+				}
 			},
 			async apply() {
 				const resolved = await resolveProviderSecret({

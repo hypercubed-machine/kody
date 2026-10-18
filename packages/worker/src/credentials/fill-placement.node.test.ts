@@ -1,9 +1,15 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import {
 	credentialFillPlacementSchema,
 	defaultNewCredentialFillPlacement,
 	fillPlacementAllows,
+	fillPlacementAllowsUnderResolution,
 	fillPlacementPartLabels,
+	fillPlacementRefusalMessage,
+	fillPlacementSiteLabel,
+	fillSiteFromCredentialInject,
+	observeFillPlacementWouldBlock,
+	observeFillPlacementWouldBlockSites,
 	readCredentialFillPlacement,
 	serializeCredentialFillPlacement,
 } from './fill-placement.ts'
@@ -95,4 +101,99 @@ test('serialize round-trips', () => {
 test('invalid stored JSON is treated as anywhere', () => {
 	expect(readCredentialFillPlacement('{')).toBeNull()
 	expect(readCredentialFillPlacement('{"headers":false}')).toBeNull()
+})
+
+test('headers-only resolution intersects and never widens placement', () => {
+	const bodyAndHeaders = credentialFillPlacementSchema.parse({
+		headers: true,
+		body: true,
+	})
+	expect(
+		fillPlacementAllowsUnderResolution(
+			bodyAndHeaders,
+			{ part: 'body' },
+			'headers-only',
+		),
+	).toBe(false)
+	expect(
+		fillPlacementAllowsUnderResolution(
+			bodyAndHeaders,
+			{ part: 'header', name: 'Authorization' },
+			'headers-only',
+		),
+	).toBe(true)
+	expect(
+		fillPlacementAllowsUnderResolution(null, { part: 'query' }, 'headers-only'),
+	).toBe(false)
+	expect(
+		fillPlacementAllowsUnderResolution(null, { part: 'query' }, 'on'),
+	).toBe(true)
+	const named = credentialFillPlacementSchema.parse({
+		headers: ['X-Api-Key'],
+	})
+	expect(
+		fillPlacementAllowsUnderResolution(
+			named,
+			{ part: 'header', name: 'Authorization' },
+			'headers-only',
+		),
+	).toBe(false)
+})
+
+test('inject maps to fill sites; refusal message names credential and parts', () => {
+	expect(
+		fillSiteFromCredentialInject({ kind: 'header', name: 'X-Api-Key' }),
+	).toEqual({ part: 'header', name: 'X-Api-Key' })
+	expect(fillSiteFromCredentialInject({ kind: 'basic' })).toEqual({
+		part: 'header',
+		name: 'Authorization',
+	})
+	expect(fillSiteFromCredentialInject({ kind: 'query' })).toEqual({
+		part: 'query',
+	})
+	expect(
+		fillPlacementSiteLabel({ part: 'header', name: 'Authorization' }),
+	).toBe('header Authorization')
+	expect(
+		fillPlacementRefusalMessage({
+			credentialName: 'apiKey',
+			site: { part: 'body' },
+			placement: defaultNewCredentialFillPlacement,
+		}),
+	).toBe('Credential "apiKey" may not fill body. Allowed parts: headers.')
+})
+
+test('observe logs would-block without throwing and skips allowed sites', () => {
+	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+	try {
+		observeFillPlacementWouldBlock({
+			credentialName: 'apiKey',
+			placement: defaultNewCredentialFillPlacement,
+			site: { part: 'header', name: 'Authorization' },
+			surface: 'placeholder',
+		})
+		expect(info).not.toHaveBeenCalled()
+		observeFillPlacementWouldBlockSites({
+			credentialName: 'apiKey',
+			placement: defaultNewCredentialFillPlacement,
+			sites: [{ part: 'body' }, { part: 'body' }, { part: 'query' }],
+			surface: 'credential-client',
+		})
+		expect(info).toHaveBeenCalledTimes(2)
+		expect(info).toHaveBeenCalledWith(
+			'credential-fill-placement-would-block',
+			expect.objectContaining({
+				credentialName: 'apiKey',
+				part: 'body',
+				allowedParts: ['headers'],
+				surface: 'credential-client',
+			}),
+		)
+		expect(info).toHaveBeenCalledWith(
+			'credential-fill-placement-would-block',
+			expect.objectContaining({ part: 'query' }),
+		)
+	} finally {
+		info.mockRestore()
+	}
 })

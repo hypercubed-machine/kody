@@ -235,7 +235,8 @@ test('lists Keys, OAuth integrations, and MCP servers as one shape', async () =>
 		mcp: { url: 'https://mcp.linear.app/sse', enabled: true },
 	})
 	expect(JSON.stringify(beaItems)).not.toMatch(/sk-value|ann-value|pkg-value/)
-	expect(byName.stripeKey?.placement).toBeNull()
+	// saveSecret defaults new Keys to headers-only; raw SQL inserts stay null.
+	expect(byName.stripeKey?.placement).toEqual({ headers: true })
 	expect(byName.github?.placement).toBeNull()
 	expect(byName.linear?.placement).toBeNull()
 })

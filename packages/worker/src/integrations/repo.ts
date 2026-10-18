@@ -20,6 +20,12 @@ import {
 	type IntegrationRefreshPolicy,
 } from './refresh-policy.ts'
 import { credentialGrantCleanupStatements } from '#worker/credentials/credential-grant-cleanup.ts'
+import {
+	type CredentialFillPlacement,
+	defaultNewCredentialFillPlacement,
+	readCredentialFillPlacement,
+	serializeCredentialFillPlacement,
+} from '#worker/credentials/fill-placement.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	type JoinedIntegration,
@@ -455,6 +461,23 @@ export async function deleteOauthApp(input: {
 	return (result.meta.changes ?? 0) > 0
 }
 
+/** Fill placement for an integration connection; null means anywhere. */
+export async function getIntegrationFillPlacement(input: {
+	db: D1Database
+	userId: string
+	name: string
+}): Promise<CredentialFillPlacement | null> {
+	const row = await input.db
+		.prepare(
+			`SELECT placement_json FROM user_integrations
+			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}
+			LIMIT 1`,
+		)
+		.bind(input.userId, input.name)
+		.first<{ placement_json: string | null }>()
+	return readCredentialFillPlacement(row?.placement_json)
+}
+
 export async function upsertIntegrationConnection(input: {
 	db: D1Database
 	row: Omit<UserIntegrationRow, 'id' | 'created_at' | 'updated_at'> & {
@@ -468,13 +491,14 @@ export async function upsertIntegrationConnection(input: {
 			`INSERT INTO user_integrations (
 				user_id, name, app_slug, platform_app_slug, account_label, description,
 				scopes_json, required_hosts_json, connected_at, token_refreshed_at,
-				created_at, updated_at, provider
+				created_at, updated_at, provider, placement_json
 			) VALUES (
 				?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
 				COALESCE(
 					(SELECT provider FROM platform_oauth_apps WHERE slug = ?4),
 					(SELECT provider FROM user_oauth_apps WHERE user_id = ?1 AND slug = ?3)
-				)
+				),
+				?13
 			)
 			ON CONFLICT(user_id, name)
 			DO UPDATE SET
@@ -502,6 +526,7 @@ export async function upsertIntegrationConnection(input: {
 			input.row.token_refreshed_at,
 			input.row.created_at ?? now,
 			input.row.updated_at ?? now,
+			serializeCredentialFillPlacement(defaultNewCredentialFillPlacement),
 		)
 		.run()
 }

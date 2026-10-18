@@ -37,6 +37,10 @@ import {
 	type ResolvedClientPlacement,
 	type ResolverCall,
 } from './credential-resolver.ts'
+import {
+	fillSiteFromCredentialInject,
+	observeFillPlacementWouldBlock,
+} from './fill-placement.ts'
 import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 import {
 	authorizeStoredCredential,
@@ -159,6 +163,13 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 						"This credential's inject is not set up correctly. Its manager can fix it with credentialUpdate.",
 					)
 				}
+				// Observe only: enforcement refuses in a later PR.
+				observeFillPlacementWouldBlock({
+					credentialName: found.name,
+					placement: found.placement,
+					site: fillSiteFromCredentialInject(inject),
+					surface: 'credential-client',
+				})
 			},
 			async apply() {
 				// `authorize` returned, so the lookup and inject are set.

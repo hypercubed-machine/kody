@@ -12,6 +12,7 @@ import {
 	credentialInjectSchema,
 	credentialProviderSchema,
 	defaultCredentialInject,
+	defaultNewCredentialFillPlacement,
 	loginExchangeSchema,
 	normalizeCredentialHosts,
 	type OptInStoredCredentialKind,
@@ -254,11 +255,16 @@ export async function planOptInCredentialFieldsForOrg(input: {
 		inject: existing?.inject ?? defaultCredentialInject,
 		placement: existing?.placement ?? null,
 	}
+	// New credentials default to headers-only; existing rows keep null
+	// (anywhere) until migration narrows them. Explicit placement wins.
+	const defaultPlacement = existing
+		? before.placement
+		: defaultNewCredentialFillPlacement
 	const report: CredentialReport = {
 		kind: effectiveKind,
 		provider: provider === undefined ? before.provider : provider,
 		inject: inject ?? before.inject,
-		placement: placement === undefined ? before.placement : placement,
+		placement: placement === undefined ? defaultPlacement : placement,
 	}
 	assertInjectFitsKind({ kind: report.kind, inject: report.inject })
 	const fieldDetails = touchesFields

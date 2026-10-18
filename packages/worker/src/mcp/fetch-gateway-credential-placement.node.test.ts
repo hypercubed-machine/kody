@@ -77,6 +77,7 @@ function foundSecret(value: string): ResolvedSecret {
 		scope: 'user',
 		allowedHosts: ['api.example.com'],
 		allowedPackages: [],
+		placement: null,
 	}
 }
 
@@ -132,17 +133,23 @@ test('header, url, and body placements are passed through, and a repeated body p
 					{ kind: 'header', name: 'authorization' },
 					{ kind: 'url' },
 				],
+				fillSites: [
+					{ part: 'header', name: 'authorization' },
+					{ part: 'query' },
+				],
 			}),
 			expect.objectContaining({
 				use: 'integration-token',
 				name: 'github',
 				placements: [{ kind: 'header', name: 'x-token' }],
+				fillSites: [{ part: 'header', name: 'x-token' }],
 			}),
 			expect.objectContaining({
 				use: 'provider-secret',
 				provider: '1password',
 				ref: 'item-1',
 				placements: [{ kind: 'body' }],
+				fillSites: [{ part: 'body' }],
 			}),
 		])
 		expect(repeatSpy).toHaveBeenCalledTimes(1)
@@ -150,6 +157,7 @@ test('header, url, and body placements are passed through, and a repeated body p
 			use: 'secret',
 			name: 'apiKey',
 			placements: [{ kind: 'body' }],
+			fillSites: [{ part: 'body' }],
 		})
 	} finally {
 		resolveSpy.mockRestore()

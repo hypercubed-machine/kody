@@ -43,6 +43,7 @@ const mockModule = vi.hoisted(() => ({
 		packageId: null,
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -56,6 +57,7 @@ const mockModule = vi.hoisted(() => ({
 			packageId: null,
 			allowedHosts: input.allowedHosts,
 			allowedPackages: [],
+			placement: null,
 			createdAt: new Date(0).toISOString(),
 			updatedAt: new Date(0).toISOString(),
 			expiresAt: null,
@@ -82,6 +84,7 @@ const mockModule = vi.hoisted(() => ({
 		scope: null,
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 	})),
 	deleteSecret: vi.fn<typeof secretsService.deleteSecret>(async () => false),
 	renameSecret: vi.fn<typeof secretsService.renameSecret>(async (input) => ({
@@ -91,6 +94,7 @@ const mockModule = vi.hoisted(() => ({
 		packageId: null,
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -102,6 +106,7 @@ const mockModule = vi.hoisted(() => ({
 		scope: 'user',
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 	})),
 	updateCredentialFields: vi.fn<typeof CredentialFields.updateCredentialFields>(
 		async () => ({}) as never,
@@ -118,6 +123,7 @@ const mockModule = vi.hoisted(() => ({
 		packageId: null,
 		allowedHosts: [],
 		allowedPackages: input.allowedPackages,
+		placement: null,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -421,6 +427,7 @@ function makeSecret(name: string, overrides: Record<string, unknown> = {}) {
 		packageId: null,
 		allowedHosts: [] as Array<string>,
 		allowedPackages: [] as Array<string>,
+		placement: null,
 		createdAt: epoch,
 		updatedAt: epoch,
 		expiresAt: null,
@@ -1143,6 +1150,7 @@ test('account secrets save returns the new secret after a successful write', asy
 			description: 'API key',
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 
@@ -1175,6 +1183,7 @@ test('account secrets save sets the provider from a creation link on org Keys on
 				value: 'fresh-secret',
 				allowedHosts: [],
 				allowedPackages: [],
+				placement: null,
 				...body,
 			}),
 		)
@@ -1258,6 +1267,7 @@ test('account secrets save stores url, login, and signing credentials with their
 				scope: 'user',
 				allowedHosts: [],
 				allowedPackages: [],
+				placement: null,
 				...body,
 			}),
 		)
@@ -1349,6 +1359,7 @@ test('account secrets save clears an opt-in credential provider sent empty', asy
 				value: 'https://hooks.example.com/new',
 				allowedHosts: [],
 				allowedPackages: [],
+				placement: null,
 				...(provider === undefined ? {} : { provider }),
 			}),
 		)
@@ -1380,6 +1391,7 @@ test('account secrets save refuses opt-in kinds without a typed value, hosts, or
 				scope: 'user',
 				allowedHosts: [],
 				allowedPackages: [],
+				placement: null,
 				...body,
 			}),
 		)
@@ -1479,6 +1491,7 @@ test('account secrets save keeps an opt-in credential hosts when the form sends 
 			value: 'https://hooks.example.com/new',
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 	expect(response.status).toBe(200)
@@ -1552,6 +1565,7 @@ test('account secrets save does not reload metadata after write', async () => {
 			description: 'API key',
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 
@@ -1590,6 +1604,7 @@ test('account secrets save outcome uses the saved record metadata', async () => 
 		packageId: null,
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 		createdAt: savedAt,
 		updatedAt: savedAt,
 		expiresAt,
@@ -1607,6 +1622,7 @@ test('account secrets save outcome uses the saved record metadata', async () => 
 			expiresAt,
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 

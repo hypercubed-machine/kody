@@ -43,6 +43,7 @@ const mockModule = vi.hoisted(() => ({
 		packageId: null,
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -56,6 +57,7 @@ const mockModule = vi.hoisted(() => ({
 			packageId: null,
 			allowedHosts: input.allowedHosts,
 			allowedPackages: [],
+			placement: null,
 			createdAt: new Date(0).toISOString(),
 			updatedAt: new Date(0).toISOString(),
 			expiresAt: null,
@@ -82,6 +84,7 @@ const mockModule = vi.hoisted(() => ({
 		scope: null,
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 	})),
 	deleteSecret: vi.fn<typeof secretsService.deleteSecret>(async () => false),
 	renameSecret: vi.fn<typeof secretsService.renameSecret>(async (input) => ({
@@ -91,6 +94,7 @@ const mockModule = vi.hoisted(() => ({
 		packageId: null,
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -102,6 +106,7 @@ const mockModule = vi.hoisted(() => ({
 		scope: 'user',
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 	})),
 	updateCredentialFields: vi.fn<typeof CredentialFields.updateCredentialFields>(
 		async () => ({}) as never,
@@ -118,6 +123,7 @@ const mockModule = vi.hoisted(() => ({
 		packageId: null,
 		allowedHosts: [],
 		allowedPackages: input.allowedPackages,
+		placement: null,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -418,6 +424,7 @@ function makeSecret(name: string, overrides: Record<string, unknown> = {}) {
 		packageId: null,
 		allowedHosts: [] as Array<string>,
 		allowedPackages: [] as Array<string>,
+		placement: null,
 		createdAt: epoch,
 		updatedAt: epoch,
 		expiresAt: null,
@@ -460,6 +467,7 @@ test('account secrets save reports rename cleanup failure without failing the sa
 		packageId: 'pkg-1',
 		allowedHosts: [],
 		allowedPackages: [],
+		placement: null,
 		createdAt: epoch,
 		updatedAt: epoch,
 		expiresAt: null,
@@ -484,6 +492,7 @@ test('account secrets save reports rename cleanup failure without failing the sa
 			value: 'fresh-secret',
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 
@@ -562,6 +571,7 @@ test('account secrets save renames opt-in credentials in place without their kin
 			value: 'https://hooks.example.com/new',
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 	expect(caseOnly.status).toBe(200)
@@ -600,6 +610,7 @@ test('account secrets save renames opt-in credentials in place without their kin
 			value: 'https://hooks.example.com/new',
 			allowedHosts: ['other.example.com'],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 	expect(rejectedBeforeRename.status).toBe(400)
@@ -642,6 +653,7 @@ test('account secrets save rolls back an in-place rename when the later write fa
 			value: 'https://hooks.example.com/new',
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 	expect(response.status).toBe(400)
@@ -702,6 +714,7 @@ test('account secrets save still refuses moving an opt-in credential across scop
 			value: 'https://hooks.example.com/new',
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 	expect(moved.status).toBe(400)
@@ -736,6 +749,7 @@ test('a failed rollback reports the committed casing so native editors can retar
 			value: 'https://hooks.example.com/new',
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}),
 	)
 	expect(response.status).toBe(400)

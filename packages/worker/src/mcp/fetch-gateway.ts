@@ -74,6 +74,7 @@ import {
 	credentialFetchPlacementKey,
 	type CredentialFetchPlacement,
 } from '#worker/credentials/credential-resolver.ts'
+import { type CredentialFillSite } from '#worker/credentials/fill-placement.ts'
 import {
 	auditResolvedFetchPlacements,
 	resolveCredential,
@@ -391,7 +392,10 @@ function readResponseContentLengthBytes(
 
 type PlacedPlaceholderSource = {
 	text: string
+	/** Audit placement (`url` still covers path + query). */
 	placement: CredentialFetchPlacement
+	/** Precise site for fill-placement observe/enforce. */
+	fillSite: CredentialFillSite
 }
 
 /**
@@ -467,18 +471,17 @@ export async function expandSecretPlaceholders(input: {
 	}
 
 	// `headers-only` fills header placeholders and sends the URL and body as
-	// written, for a body that quotes the placeholder syntax.
+	// written, for a body that quotes the placeholder syntax. That mode
+	// intersects with per-credential placement (never widens it): URL/body
+	// sources are omitted here, and named-header limits still apply below.
 	const fillsUrlAndBody = resolutionMode === 'on'
-	const urlTexts = fillsUrlAndBody ? urlPlaceholderTexts(requestUrl) : []
 	const placeholderSources: Array<PlacedPlaceholderSource> = [
 		...Array.from(headers.entries(), ([name, text]) => ({
 			text,
 			placement: { kind: 'header' as const, name },
+			fillSite: { part: 'header' as const, name },
 		})),
-		...urlTexts.map((text) => ({
-			text,
-			placement: { kind: 'url' as const },
-		})),
+		...(fillsUrlAndBody ? urlPlaceholderSources(requestUrl) : []),
 	]
 	assertSecretPlacement({
 		url: requestUrl,
@@ -574,29 +577,51 @@ export async function expandSecretPlaceholders(input: {
 			string,
 			Array<CredentialFetchPlacement>
 		>()
+		const fillSitesByPlaceholder = new Map<string, Array<CredentialFillSite>>()
 		const notePlacement = (
 			placeholder: string,
 			placement: CredentialFetchPlacement,
+			fillSite: CredentialFillSite,
 		) => {
 			const found = placementsByPlaceholder.get(placeholder)
 			if (found) found.push(placement)
 			else placementsByPlaceholder.set(placeholder, [placement])
+			const sites = fillSitesByPlaceholder.get(placeholder)
+			if (sites) sites.push(fillSite)
+			else fillSitesByPlaceholder.set(placeholder, [fillSite])
 		}
 		for (const source of sources) {
 			for (const secret of parseSecretPlaceholders(source.text)) {
-				notePlacement(buildSecretPlaceholder(secret), source.placement)
+				notePlacement(
+					buildSecretPlaceholder(secret),
+					source.placement,
+					source.fillSite,
+				)
 			}
 			for (const basic of parseBasicAuthSecretPlaceholders(source.text)) {
-				notePlacement(buildSecretPlaceholder(basic.username), source.placement)
-				notePlacement(buildSecretPlaceholder(basic.password), source.placement)
+				notePlacement(
+					buildSecretPlaceholder(basic.username),
+					source.placement,
+					source.fillSite,
+				)
+				notePlacement(
+					buildSecretPlaceholder(basic.password),
+					source.placement,
+					source.fillSite,
+				)
 			}
 			for (const name of parseIntegrationTokenPlaceholders(source.text)) {
-				notePlacement(buildIntegrationTokenPlaceholder(name), source.placement)
+				notePlacement(
+					buildIntegrationTokenPlaceholder(name),
+					source.placement,
+					source.fillSite,
+				)
 			}
 			for (const referenced of parseProviderSecretPlaceholders(source.text)) {
 				notePlacement(
 					buildProviderSecretPlaceholder(referenced),
 					source.placement,
+					source.fillSite,
 				)
 			}
 		}
@@ -628,6 +653,7 @@ export async function expandSecretPlaceholders(input: {
 						orgSlug: secretPageOrgSlugFromCaller(input.props),
 						requestHost,
 						placements,
+						fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
 					},
 				},
 			]
@@ -650,6 +676,7 @@ export async function expandSecretPlaceholders(input: {
 						name,
 						requestHost,
 						placements,
+						fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
 					},
 				},
 			]
@@ -674,6 +701,7 @@ export async function expandSecretPlaceholders(input: {
 						storageContext,
 						requestHost,
 						placements,
+						fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
 					},
 				},
 			]
@@ -866,22 +894,27 @@ export async function expandSecretPlaceholders(input: {
 			resolve: async (batch: PlaceholderReferenceBatch) => {
 				if (!batchHasPlaceholders(batch)) return []
 				const placement = { kind: 'body' as const }
+				const fillSite = { part: 'body' as const }
 				const sources = [
 					...batch.secrets.map((secret) => ({
 						text: buildSecretPlaceholder(secret),
 						placement,
+						fillSite,
 					})),
 					...batch.basicAuth.map((placeholder) => ({
 						text: buildBasicAuthSecretPlaceholderFromReference(placeholder),
 						placement,
+						fillSite,
 					})),
 					...batch.integrationTokens.map((name) => ({
 						text: buildIntegrationTokenPlaceholder(name),
 						placement,
+						fillSite,
 					})),
 					...batch.providerSecrets.map((referenced) => ({
 						text: buildProviderSecretPlaceholder(referenced),
 						placement,
+						fillSite,
 					})),
 				]
 				const before = substitutedValues.length
@@ -1340,11 +1373,20 @@ function dedupeBasicAuthSecretPlaceholders(
 	return Array.from(deduped.values())
 }
 
-/** The URL path and each decoded query key and value. */
-function urlPlaceholderTexts(url: URL) {
+/** Path and query texts with precise fill sites (audit still uses `url`). */
+function urlPlaceholderSources(url: URL): Array<PlacedPlaceholderSource> {
+	const auditPlacement = { kind: 'url' as const }
 	return [
-		decodeSecretPlaceholderPunctuation(url.pathname),
-		...formUrlEncodedTexts(url.search),
+		{
+			text: decodeSecretPlaceholderPunctuation(url.pathname),
+			placement: auditPlacement,
+			fillSite: { part: 'path' as const },
+		},
+		...formUrlEncodedTexts(url.search).map((text) => ({
+			text,
+			placement: auditPlacement,
+			fillSite: { part: 'query' as const },
+		})),
 	]
 }
 

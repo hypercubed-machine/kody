@@ -7,6 +7,10 @@ import {
 	secretTtlMs,
 } from '@kody-internal/shared/secret-expires-at.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import {
+	type CredentialFillPlacement,
+	readCredentialFillPlacement,
+} from '#worker/credentials/fill-placement.ts'
 import { assertOptInCredentialValue } from '#worker/credentials/opt-in-credential-value.ts'
 import {
 	normalizeAllowedPackages,
@@ -142,6 +146,8 @@ export type ResolvedSecret = {
 	scope: SecretScope | null
 	allowedHosts: Array<string>
 	allowedPackages: Array<string>
+	/** Null means anywhere (placeholders may fill any request part). */
+	placement: CredentialFillPlacement | null
 }
 
 /**
@@ -864,6 +870,7 @@ export async function findSecret(
 			scope: null,
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}
 	}
 	return {
@@ -872,6 +879,7 @@ export async function findSecret(
 		scope: found.scope,
 		allowedHosts: parseAllowedHosts(found.entry.allowed_hosts),
 		allowedPackages: parseAllowedPackages(found.entry.allowed_packages),
+		placement: readCredentialFillPlacement(found.entry.placement_json),
 	}
 }
 
@@ -894,6 +902,7 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 			scope: null,
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}
 		const { value: _value, ...metadata } = missing
 		return { found: metadata, readValue: async () => missing }
@@ -904,6 +913,7 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 		scope: found.scope,
 		allowedHosts: parseAllowedHosts(found.entry.allowed_hosts),
 		allowedPackages: parseAllowedPackages(found.entry.allowed_packages),
+		placement: readCredentialFillPlacement(found.entry.placement_json),
 	}
 	return {
 		found: metadata,
@@ -927,6 +937,8 @@ export type StoredCredential = {
 	injectJson: string
 	/** Raw `config_json`: a login credential's exchange, else null. */
 	configJson: string | null
+	/** Null means anywhere (placeholders / credential() may fill any part). */
+	placement: CredentialFillPlacement | null
 	/**
 	 * Digest of the stored ciphertext and `config_json`. Every value write
 	 * re-encrypts with a fresh IV, so any change to the value or exchange
@@ -963,6 +975,7 @@ export async function findStoredCredentialForUse(input: {
 			allowedHosts: parseAllowedHosts(row.allowed_hosts),
 			injectJson: row.inject_json,
 			configJson: row.config_json,
+			placement: readCredentialFillPlacement(row.placement_json),
 			revision: await sha256Hex(
 				JSON.stringify([row.encrypted_value, row.config_json]),
 			),
@@ -988,6 +1001,7 @@ export async function resolveSecret(
 			scope: null,
 			allowedHosts: [],
 			allowedPackages: [],
+			placement: null,
 		}
 	}
 	return {
@@ -1001,6 +1015,7 @@ export async function resolveSecret(
 		scope: found.scope,
 		allowedHosts: parseAllowedHosts(found.entry.allowed_hosts),
 		allowedPackages: parseAllowedPackages(found.entry.allowed_packages),
+		placement: readCredentialFillPlacement(found.entry.placement_json),
 	}
 }
 
