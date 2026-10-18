@@ -1,15 +1,21 @@
+import { spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
+import { fileURLToPath } from 'node:url'
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
+	applySecretBulkVersionedEnv,
 	buildSecrets,
 	buildSpawnEnv,
 	buildWranglerSecretBulkFlags,
 	collectSpawnedProcessOutput,
+	isMissingWorkerVersionSecretBulkError,
+	parseArgs,
 	parseDotenv,
 	parseEnvSourceSpec,
 	retrySecretBulkUpload,
+	runSecretBulkUploadWithOptionalVersionFallback,
 	toDotenv,
 } from './sync-worker-secrets'
 
@@ -25,6 +31,10 @@ const baseOptions = {
 	includeEmpty: false,
 	emptyAsSpace: false,
 }
+
+const syncWorkerSecretsCli = fileURLToPath(
+	new URL('./sync-worker-secrets.ts', import.meta.url),
+)
 
 test('toDotenv and parseDotenv round-trip multiline PEM values and literal backslash-n', () => {
 	const cases: Array<[string, string, string]> = [
@@ -192,6 +202,137 @@ test('versioned secrets stage bindings without deploying pending code', () => {
 		'--name',
 		'kody-platform',
 	])
+})
+
+test('parseArgs accepts --versioned and builds versions secret bulk flags', () => {
+	const options = parseArgs([
+		'--versioned',
+		'--env',
+		'',
+		'--name',
+		'kody-platform',
+		'--config',
+		'packages/platform-worker/wrangler-production.generated.json',
+	])
+	expect(options.versioned).toBe(true)
+	expect(options.env).toBe('')
+	expect(options.name).toBe('kody-platform')
+	expect(buildWranglerSecretBulkFlags(options, '/tmp/secrets.env')).toEqual([
+		'versions',
+		'secret',
+		'bulk',
+		'/tmp/secrets.env',
+		'--name',
+		'kody-platform',
+		'--config',
+		'packages/platform-worker/wrangler-production.generated.json',
+	])
+})
+
+test('SECRET_BULK_VERSIONED=1 enables versioned mode without a CLI flag', () => {
+	expect(
+		applySecretBulkVersionedEnv(
+			parseArgs(['--env', '', '--name', 'kody-platform']),
+			{
+				SECRET_BULK_VERSIONED: '1',
+			},
+		).versioned,
+	).toBe(true)
+	expect(
+		applySecretBulkVersionedEnv(parseArgs(['--name', 'kody-platform']), {
+			SECRET_BULK_VERSIONED: '',
+		}).versioned,
+	).toBeUndefined()
+})
+
+test('CLI process accepts --versioned on the real argv path', () => {
+	const result = spawnSync(
+		process.execPath,
+		[syncWorkerSecretsCli, '--versioned'],
+		{ encoding: 'utf8', env: { ...process.env } },
+	)
+	const output = `${result.stdout}${result.stderr}`
+	expect(output).not.toMatch(/Unknown flag:\s*--versioned/)
+	expect(output).toMatch(/No secrets to sync \(empty input\)\./)
+	expect(result.status).not.toBe(0)
+})
+
+test('CLI process rejects unknown flags on the real argv path', () => {
+	const result = spawnSync(
+		process.execPath,
+		[syncWorkerSecretsCli, '--not-a-real-flag'],
+		{ encoding: 'utf8', env: { ...process.env } },
+	)
+	expect(`${result.stdout}${result.stderr}`).toMatch(
+		/Unknown flag:\s*--not-a-real-flag/,
+	)
+	expect(result.status).not.toBe(0)
+})
+
+test('versioned secret bulk falls back to plain secret bulk on Cloudflare 10222', async () => {
+	const missingVersion = {
+		exitCode: 1,
+		output: [
+			'✘ [ERROR] A request to the Cloudflare API failed.',
+			'',
+			'  Cannot update secrets for a Worker that has no versions. [code: 10222]',
+		].join('\n'),
+	}
+	expect(isMissingWorkerVersionSecretBulkError(missingVersion.output)).toBe(
+		true,
+	)
+	expect(
+		isMissingWorkerVersionSecretBulkError('Authentication error [code: 9109]'),
+	).toBe(false)
+
+	const attempts: Array<Array<string>> = []
+	const logs: Array<string> = []
+	const result = await runSecretBulkUploadWithOptionalVersionFallback(
+		{ ...baseOptions, versioned: true, env: '', name: 'kody-platform' },
+		async (flags) => {
+			attempts.push(flags)
+			if (flags[0] === 'versions') {
+				return missingVersion
+			}
+			return { exitCode: 0, output: 'Uploaded' }
+		},
+		'/tmp/secrets.env',
+		async (runAttempt) => runAttempt(),
+		(message) => {
+			logs.push(message)
+		},
+	)
+	expect(result).toEqual({ exitCode: 0, output: 'Uploaded' })
+	expect(attempts).toEqual([
+		[
+			'versions',
+			'secret',
+			'bulk',
+			'/tmp/secrets.env',
+			'--name',
+			'kody-platform',
+		],
+		['secret', 'bulk', '/tmp/secrets.env', '--name', 'kody-platform'],
+	])
+	expect(logs).toEqual([
+		'Worker has no versions yet (Cloudflare 10222); falling back to secret bulk.',
+	])
+})
+
+test('versioned secret bulk does not fall back on non-10222 failures', async () => {
+	const attempts: Array<Array<string>> = []
+	const result = await runSecretBulkUploadWithOptionalVersionFallback(
+		{ ...baseOptions, versioned: true, name: 'kody-platform' },
+		async (flags) => {
+			attempts.push(flags)
+			return { exitCode: 1, output: 'Authentication error [code: 9109]' }
+		},
+		'/tmp/secrets.env',
+		async (runAttempt) => runAttempt(),
+	)
+	expect(result.exitCode).toBe(1)
+	expect(attempts).toHaveLength(1)
+	expect(attempts[0]?.[0]).toBe('versions')
 })
 
 test('secret bulk rejects --env with --name so it cannot target name-env', () => {

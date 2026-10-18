@@ -78,7 +78,12 @@ export type CliOptions = {
 	emptyAsSpace: boolean
 }
 
-function parseArgs(argv: Array<string>): CliOptions {
+/**
+ * Parse CLI flags for `sync-worker-secrets`. Exported so tests exercise the
+ * same argv path production deploy uses (not only `buildWranglerSecretBulkFlags`
+ * with a hand-built options object).
+ */
+export function parseArgs(argv: Array<string>): CliOptions {
 	const options: CliOptions = {
 		env: undefined,
 		dotenvPaths: [],
@@ -167,6 +172,26 @@ function parseArgs(argv: Array<string>): CliOptions {
 	}
 
 	return options
+}
+
+/**
+ * Deploy may set `SECRET_BULK_VERSIONED=1` instead of passing `--versioned`.
+ * Tip-workflow + older `deploy_sha` checkouts must not die on an unknown CLI
+ * flag: pre-#4028 trees ignore this env and keep plain `secret bulk`.
+ */
+export function applySecretBulkVersionedEnv(
+	options: CliOptions,
+	env: NodeJS.ProcessEnv = process.env,
+): CliOptions {
+	if (env.SECRET_BULK_VERSIONED === '1') {
+		return { ...options, versioned: true }
+	}
+	return options
+}
+
+/** Cloudflare 10222: no Worker version exists for `versions secret bulk`. */
+export function isMissingWorkerVersionSecretBulkError(output: string) {
+	return /\[code:\s*10222\]/.test(output)
 }
 
 function stripQuotesPreservingKind(value: string): {
@@ -415,6 +440,37 @@ export function buildWranglerSecretBulkFlags(
 	return args
 }
 
+/**
+ * Run wrangler secret bulk, optionally staging onto the latest Worker version.
+ * When `versions secret bulk` fails with Cloudflare 10222 (no versions yet —
+ * fresh Worker), fall back to plain `secret bulk` once.
+ */
+export async function runSecretBulkUploadWithOptionalVersionFallback(
+	options: CliOptions,
+	runAttempt: (flags: Array<string>) => Promise<SecretBulkAttemptResult>,
+	secretsFilePath: string,
+	retry: typeof retrySecretBulkUpload = retrySecretBulkUpload,
+	log: (message: string) => void = console.log,
+): Promise<SecretBulkAttemptResult> {
+	const versionedFlags = buildWranglerSecretBulkFlags(options, secretsFilePath)
+	const result = await retry(() => runAttempt(versionedFlags))
+	if (
+		result.exitCode === 0 ||
+		!options.versioned ||
+		!isMissingWorkerVersionSecretBulkError(result.output)
+	) {
+		return result
+	}
+	log(
+		'Worker has no versions yet (Cloudflare 10222); falling back to secret bulk.',
+	)
+	const unversionedFlags = buildWranglerSecretBulkFlags(
+		{ ...options, versioned: false },
+		secretsFilePath,
+	)
+	return retry(() => runAttempt(unversionedFlags))
+}
+
 async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
 	const wranglerBin = resolveLocalBinary('wrangler')
 	const spawnEnv = buildSpawnEnv(options)
@@ -422,23 +478,16 @@ async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
 		tmpdir(),
 		`wrangler-secrets-${Date.now()}-${randomBytes(6).toString('hex')}.env`,
 	)
-	const args = [
-		wranglerBin,
-		...buildWranglerSecretBulkFlags(options, secretsFilePath),
-	]
 	await writeFile(secretsFilePath, dotenvText, {
 		encoding: 'utf8',
 		mode: 0o600,
 	})
 
 	try {
-		const [command, ...commandArgs] = args
-		if (!command) {
-			fail('Could not resolve wrangler command for secret sync.')
-		}
-
-		const result = await retrySecretBulkUpload(() =>
-			runWranglerSecretBulkOnce(command, commandArgs, spawnEnv),
+		const result = await runSecretBulkUploadWithOptionalVersionFallback(
+			options,
+			(flags) => runWranglerSecretBulkOnce(wranglerBin, flags, spawnEnv),
+			secretsFilePath,
 		)
 		if (result.exitCode !== 0) {
 			process.exit(result.exitCode)
@@ -501,7 +550,7 @@ export function collectSpawnedProcessOutput(
 }
 
 async function main() {
-	const options = parseArgs(process.argv.slice(2))
+	const options = applySecretBulkVersionedEnv(parseArgs(process.argv.slice(2)))
 	const secrets = await buildSecrets(options)
 	if (secrets.size === 0) {
 		fail('No secrets to sync (empty input).')
@@ -510,8 +559,9 @@ async function main() {
 	await runWranglerSecretBulk(options, dotenvText)
 	const envLabel =
 		options.env && options.env.length > 0 ? options.env : 'default'
+	const modeLabel = options.versioned ? ', versioned' : ''
 	console.log(
-		`Synced ${secrets.size} secret(s) via bulk upload (${envLabel}${options.name ? `, ${options.name}` : ''}).`,
+		`Synced ${secrets.size} secret(s) via bulk upload (${envLabel}${options.name ? `, ${options.name}` : ''}${modeLabel}).`,
 	)
 }
 

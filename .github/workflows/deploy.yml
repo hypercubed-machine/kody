@@ -1183,10 +1183,16 @@ jobs:
           needs.sha-guard.outputs.deploy_platform == 'true' ||
           steps.resources.outputs.origin_deploy_mode == 'fresh'
         env:
-          # A fresh account has no Worker version for versions secret bulk to patch.
-          PLATFORM_SECRET_MODE:
-            ${{ steps.resources.outputs.origin_deploy_mode != 'fresh' &&
-            '--versioned' || '' }}
+          # Stage secrets onto the latest Worker version (avoids Cloudflare
+          # 10215 from an undeployed upload). Use an env flag, not `--versioned`
+          # on argv: workflow_run Deploy loads this YAML from main tip while
+          # checking out an older validated deploy_sha — a tip-only CLI flag
+          # made pre-#4028 trees exit with "Unknown flag: --versioned"
+          # (run 39146175046). Pre-fix trees ignore this env. Fresh accounts
+          # leave it unset; the script also falls back on Cloudflare 10222.
+          SECRET_BULK_VERSIONED:
+            ${{ steps.resources.outputs.origin_deploy_mode != 'fresh' && '1' ||
+            '' }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_APP_API_TOKEN: ${{ secrets.CLOUDFLARE_APP_API_TOKEN }}
           WRANGLER_CONFIG:
@@ -1220,9 +1226,8 @@ jobs:
           CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN:
             ${{ secrets.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN }}
         run: >
-          node tools/ci/sync-worker-secrets.ts
-          ${PLATFORM_SECRET_MODE:+$PLATFORM_SECRET_MODE} --env "" --name
-          kody-platform --config "$WRANGLER_CONFIG" --set-from-env COOKIE_SECRET
+          node tools/ci/sync-worker-secrets.ts --env "" --name kody-platform
+          --config "$WRANGLER_CONFIG" --set-from-env COOKIE_SECRET
           --set-from-env-optional SECRET_STORE_KEY --set-from-env-optional
           AI_GATEWAY_ID --set-from-env-optional SENTRY_DSN --set-from-env
           CLOUDFLARE_API_TOKEN=CLOUDFLARE_APP_API_TOKEN --set-from-env-optional
