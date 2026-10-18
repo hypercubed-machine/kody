@@ -1532,6 +1532,8 @@ export async function saveAccountSecret(input: {
 			name: currentSecret.name,
 			scope: currentSecret.scope,
 			storageContext: getSecretContextForAccountSecret(currentSecret),
+			// Moves must preserve placement even when the source is expired.
+			includeExpired: true,
 		})
 		if (source.found) placementOnInsert = source.placement
 	}
