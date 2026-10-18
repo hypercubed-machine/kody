@@ -29,6 +29,18 @@ function sleep(ms: number) {
 }
 
 /**
+ * Cloudflare error 10215: classic `secret bulk` refuses to edit secrets when
+ * the Worker's latest uploaded version is not the live deployment. The
+ * versions secret API updates secrets without requiring that deploy.
+ */
+export function isSecretBulkUndeployedVersionError(output: string) {
+	return (
+		/\[code:\s*10215\]/i.test(output) ||
+		/latest version of your Worker isn't currently deployed/i.test(output)
+	)
+}
+
+/**
  * Bounded retry for wrangler secret bulk. Matches production deploy's
  * 3-attempt, 10s-then-double budget so an edge 503 does not fail the job.
  */
@@ -380,17 +392,22 @@ export function toDotenv(secrets: ReadonlyMap<string, string>) {
  * `wrangler secret bulk --env <env> --name <script>` still targets
  * `<script>-<env>` (unlike `wrangler deploy --name`, which overrides the
  * suffix). Callers that pin a script with `--name` must omit `--env`.
+ * The same suffix rule applies to `wrangler versions secret bulk`.
  */
 export function buildWranglerSecretBulkFlags(
 	options: CliOptions,
 	secretsFilePath: string,
+	command: 'secret-bulk' | 'versions-secret-bulk' = 'secret-bulk',
 ): Array<string> {
 	if (options.name && options.env && options.env.length > 0) {
 		fail(
 			`wrangler secret bulk appends -<env> even when --name is set, so "${options.name}" with --env ${options.env} would target "${options.name}-${options.env}". Pass --env "" with --name to pin the unsuffixed script.`,
 		)
 	}
-	const args = ['secret', 'bulk', secretsFilePath]
+	const args =
+		command === 'versions-secret-bulk'
+			? ['versions', 'secret', 'bulk', secretsFilePath]
+			: ['secret', 'bulk', secretsFilePath]
 	if (options.env !== undefined && options.env.length > 0) {
 		args.push('--env', options.env)
 	}
@@ -410,17 +427,17 @@ async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
 		tmpdir(),
 		`wrangler-secrets-${Date.now()}-${randomBytes(6).toString('hex')}.env`,
 	)
-	const args = [
-		wranglerBin,
-		...buildWranglerSecretBulkFlags(options, secretsFilePath),
-	]
 	await writeFile(secretsFilePath, dotenvText, {
 		encoding: 'utf8',
 		mode: 0o600,
 	})
 
 	try {
-		const [command, ...commandArgs] = args
+		const classicArgs = [
+			wranglerBin,
+			...buildWranglerSecretBulkFlags(options, secretsFilePath),
+		]
+		const [command, ...commandArgs] = classicArgs
 		if (!command) {
 			fail('Could not resolve wrangler command for secret sync.')
 		}
@@ -428,8 +445,35 @@ async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
 		const result = await retrySecretBulkUpload(() =>
 			runWranglerSecretBulkOnce(command, commandArgs, spawnEnv),
 		)
-		if (result.exitCode !== 0) {
+		if (result.exitCode === 0) {
+			return
+		}
+		if (!isSecretBulkUndeployedVersionError(result.output)) {
 			process.exit(result.exitCode)
+		}
+
+		console.log(
+			'Classic secret bulk refused because the latest Worker version is not deployed (Cloudflare 10215); falling back to wrangler versions secret bulk.',
+		)
+		const versionsArgs = [
+			wranglerBin,
+			...buildWranglerSecretBulkFlags(
+				options,
+				secretsFilePath,
+				'versions-secret-bulk',
+			),
+		]
+		const [versionsCommand, ...versionsCommandArgs] = versionsArgs
+		if (!versionsCommand) {
+			fail('Could not resolve wrangler command for versions secret sync.')
+		}
+		const versionsResult = await runWranglerSecretBulkOnce(
+			versionsCommand,
+			versionsCommandArgs,
+			spawnEnv,
+		)
+		if (versionsResult.exitCode !== 0) {
+			process.exit(versionsResult.exitCode)
 		}
 	} finally {
 		await unlink(secretsFilePath).catch(() => {})

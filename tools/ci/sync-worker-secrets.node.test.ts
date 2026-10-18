@@ -7,6 +7,7 @@ import {
 	buildSpawnEnv,
 	buildWranglerSecretBulkFlags,
 	collectSpawnedProcessOutput,
+	isSecretBulkUndeployedVersionError,
 	parseDotenv,
 	parseEnvSourceSpec,
 	retrySecretBulkUpload,
@@ -176,6 +177,41 @@ test('secret bulk omits empty --env so --name pins the unsuffixed script', () =>
 		'--config',
 		'packages/worker/wrangler-production.generated.json',
 	])
+
+	expect(
+		buildWranglerSecretBulkFlags(
+			{
+				...baseOptions,
+				env: '',
+				name: 'kody-platform',
+				config: 'packages/platform-worker/wrangler-production.generated.json',
+			},
+			secretsFile,
+			'versions-secret-bulk',
+		),
+	).toEqual([
+		'versions',
+		'secret',
+		'bulk',
+		secretsFile,
+		'--name',
+		'kody-platform',
+		'--config',
+		'packages/platform-worker/wrangler-production.generated.json',
+	])
+})
+
+test('secret bulk detects Cloudflare 10215 undeployed-version refusals', () => {
+	expect(
+		isSecretBulkUndeployedVersionError(
+			"Secret edit failed. You attempted to modify a secret, but the latest version of your Worker isn't currently deployed. [code: 10215]",
+		),
+	).toBe(true)
+	expect(
+		isSecretBulkUndeployedVersionError(
+			'PATCH /accounts/acct/workers/scripts/kody-platform/secrets-bulk -> 503 Service Unavailable',
+		),
+	).toBe(false)
 })
 
 test('secret bulk rejects --env with --name so it cannot target name-env', () => {
