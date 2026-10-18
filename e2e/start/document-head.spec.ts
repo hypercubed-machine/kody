@@ -22,15 +22,21 @@ test('hydration preserves a browser extension toolbar color override', async ({
 		observer.observe(document, { childList: true, subtree: true })
 	})
 	await page.goto('/pricing')
-	// A working SPA transition proves the initial document finished hydration.
+	// The toggle's controlled aria-expanded state proves handlers are attached.
+	const features = page.getByRole('button', { name: 'Features', exact: true })
+	await features.click()
+	await expect(features).toHaveAttribute('aria-expanded', 'true')
 	const documentNavigations: Array<string> = []
 	page.on('request', (request) => {
 		if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
 			documentNavigations.push(request.url())
 		}
 	})
-	await page.getByRole('link', { name: 'Docs', exact: true }).first().click()
-	await expect(page).toHaveURL(/\/docs/)
+	await page.getByRole('link', { name: 'Credentials', exact: true }).click()
+	await expect(page).toHaveURL(/\/features\/credentials$/)
+	await expect(page.getByRole('heading', { level: 1 })).toContainText(
+		'Credentials',
+	)
 	expect(documentNavigations).toEqual([])
 	await expect(
 		page.locator('head meta[name="theme-color"]').first(),
