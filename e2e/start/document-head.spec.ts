@@ -35,7 +35,7 @@ test('hydration preserves a browser extension toolbar color override', async ({
 	await page.getByRole('link', { name: 'Credentials', exact: true }).click()
 	await expect(page).toHaveURL(/\/features\/credentials$/)
 	await expect(page.getByRole('heading', { level: 1 })).toContainText(
-		'Credentials',
+		'Your agent can use the key.',
 	)
 	expect(documentNavigations).toEqual([])
 	await expect(
