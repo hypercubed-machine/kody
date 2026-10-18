@@ -7,9 +7,29 @@ import { isExecutedDirectly, resolveLocalBinary } from '../node-runtime.ts'
 import { isRetryableDeployFailure } from './is-retryable-deploy-failure.ts'
 import { fail } from './resource-utils.ts'
 
+const ansiEscapePattern = new RegExp(`${'\u001b'}\\[[0-9;]*m`, 'g')
+
 export type SecretBulkAttemptResult = {
 	exitCode: number
 	output: string
+}
+
+/**
+ * Cloudflare rejects legacy `wrangler secret bulk` with 10215 when the
+ * Worker's latest uploaded version is not the version currently serving
+ * traffic (for example after a deploy that uploaded successfully then failed
+ * on the deployments API). Activating that orphan would put unknown/partial
+ * code live, so recovery uses `wrangler versions secret bulk` instead: it
+ * patches secrets onto a new undeployed version without changing traffic.
+ * The following `wrangler deploy` uploads the intended checkout and activates
+ * that known code (see #4027).
+ */
+export function isUndeployedLatestSecretError(output: string) {
+	const text = output.replace(ansiEscapePattern, '')
+	return (
+		/\[code:\s*10215\]/.test(text) ||
+		/latest version of your Worker isn't currently deployed/i.test(text)
+	)
 }
 
 export type RetrySecretBulkUploadOptions = {
@@ -379,18 +399,23 @@ export function toDotenv(secrets: ReadonlyMap<string, string>) {
 /**
  * `wrangler secret bulk --env <env> --name <script>` still targets
  * `<script>-<env>` (unlike `wrangler deploy --name`, which overrides the
- * suffix). Callers that pin a script with `--name` must omit `--env`.
+ * suffix). Callers that pin a script with `--name` must omit `--env`. The
+ * versions secret bulk path uses the same env/name rules.
  */
 export function buildWranglerSecretBulkFlags(
 	options: CliOptions,
 	secretsFilePath: string,
+	mode: 'legacy' | 'versions' = 'legacy',
 ): Array<string> {
 	if (options.name && options.env && options.env.length > 0) {
 		fail(
 			`wrangler secret bulk appends -<env> even when --name is set, so "${options.name}" with --env ${options.env} would target "${options.name}-${options.env}". Pass --env "" with --name to pin the unsuffixed script.`,
 		)
 	}
-	const args = ['secret', 'bulk', secretsFilePath]
+	const args =
+		mode === 'versions'
+			? ['versions', 'secret', 'bulk', secretsFilePath]
+			: ['secret', 'bulk', secretsFilePath]
 	if (options.env !== undefined && options.env.length > 0) {
 		args.push('--env', options.env)
 	}
@@ -403,6 +428,26 @@ export function buildWranglerSecretBulkFlags(
 	return args
 }
 
+export async function syncSecretsWithUndeployedLatestRecovery(input: {
+	runLegacy: () => Promise<SecretBulkAttemptResult>
+	runVersions: () => Promise<SecretBulkAttemptResult>
+	retry?: typeof retrySecretBulkUpload
+	onVersionsFallback?: (legacyOutput: string) => void
+}): Promise<SecretBulkAttemptResult> {
+	const retry = input.retry ?? retrySecretBulkUpload
+	const legacy = await retry(input.runLegacy)
+	if (legacy.exitCode === 0) {
+		return legacy
+	}
+	if (!isUndeployedLatestSecretError(legacy.output)) {
+		return legacy
+	}
+	input.onVersionsFallback?.(legacy.output)
+	// versions secret bulk is not subject to the 10215 gate; still use the
+	// same transient-retry budget for edge 5xx.
+	return retry(input.runVersions)
+}
+
 async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
 	const wranglerBin = resolveLocalBinary('wrangler')
 	const spawnEnv = buildSpawnEnv(options)
@@ -410,24 +455,31 @@ async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
 		tmpdir(),
 		`wrangler-secrets-${Date.now()}-${randomBytes(6).toString('hex')}.env`,
 	)
-	const args = [
-		wranglerBin,
-		...buildWranglerSecretBulkFlags(options, secretsFilePath),
-	]
 	await writeFile(secretsFilePath, dotenvText, {
 		encoding: 'utf8',
 		mode: 0o600,
 	})
 
 	try {
-		const [command, ...commandArgs] = args
-		if (!command) {
-			fail('Could not resolve wrangler command for secret sync.')
-		}
-
-		const result = await retrySecretBulkUpload(() =>
-			runWranglerSecretBulkOnce(command, commandArgs, spawnEnv),
-		)
+		const result = await syncSecretsWithUndeployedLatestRecovery({
+			runLegacy: () =>
+				runWranglerSecretBulkOnce(
+					wranglerBin,
+					buildWranglerSecretBulkFlags(options, secretsFilePath, 'legacy'),
+					spawnEnv,
+				),
+			runVersions: () =>
+				runWranglerSecretBulkOnce(
+					wranglerBin,
+					buildWranglerSecretBulkFlags(options, secretsFilePath, 'versions'),
+					spawnEnv,
+				),
+			onVersionsFallback: () => {
+				console.log(
+					'Legacy wrangler secret bulk failed because the latest Worker version is not deployed (Cloudflare 10215). Falling back to wrangler versions secret bulk so secrets update without activating the undeployed version; the following wrangler deploy uploads and activates the intended checkout (#4027).',
+				)
+			},
+		})
 		if (result.exitCode !== 0) {
 			process.exit(result.exitCode)
 		}

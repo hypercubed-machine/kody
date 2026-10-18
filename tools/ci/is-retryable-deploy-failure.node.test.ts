@@ -23,6 +23,12 @@ test('production deploy retries transient Cloudflare flakes and fails fast on re
 		'workflows.api.error.internal_server: failed to create workflow'
 	const apiAuthFlakeLog =
 		'A request to the Cloudflare API (/accounts/acct/workers/scripts/kody-production/versions) failed.\n [code: 10001]'
+	const deploymentsUnknown10013Log = [
+		'✘ [ERROR] A request to the Cloudflare API (/accounts/acct/workers/scripts/kody-platform/deployments) failed.',
+		'',
+		'  An unknown error has occurred. If this error persists, please file a report in workers-sdk',
+		'  [code: 10013]',
+	].join('\n')
 	const durableObjectMigrationLog = [
 		'A request to the Cloudflare API (/accounts/acct/workers/scripts/kody-production/versions) failed.',
 		"Cannot apply delete-class migration to class 'AppRunner' which was not exported in the previous version of the script",
@@ -61,6 +67,7 @@ test('production deploy retries transient Cloudflare flakes and fails fast on re
 	).toBe(true)
 	expect(isRetryableDeployFailure(internalServerLog)).toBe(true)
 	expect(isRetryableDeployFailure(apiAuthFlakeLog)).toBe(true)
+	expect(isRetryableDeployFailure(deploymentsUnknown10013Log)).toBe(true)
 	expect(isRetryableDeployFailure(secretBulk503Log)).toBe(true)
 	expect(isRetryableDeployFailure(deploymentsList200Log)).toBe(true)
 	expect(isRetryableDeployFailure(gatewayTimeout504Log)).toBe(true)

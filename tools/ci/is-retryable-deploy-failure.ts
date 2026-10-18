@@ -16,6 +16,10 @@ const ansiEscapePattern = new RegExp(`${'\u001b'}\\[[0-9;]*m`, 'g')
 const retryableDeployFailurePatterns = [
 	/workflows\.api\.error\.internal_server/i,
 	/Cloudflare API[\s\S]*\[code:\s*10001\]/i,
+	// 10013 ("An unknown error has occurred") on the deployments API has left
+	// an uploaded-but-undeployed platform version (#4027). Treat it as a
+	// bounded retry so a later attempt can finish the activation.
+	/Cloudflare API[\s\S]*\[code:\s*10013\]/i,
 	/Cloudflare API[\s\S]*\[code:\s*10021\]/i,
 	/Script startup exceeded CPU time limit/i,
 	/Received a malformed response from the API/i,

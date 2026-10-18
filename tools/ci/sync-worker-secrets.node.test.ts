@@ -7,9 +7,11 @@ import {
 	buildSpawnEnv,
 	buildWranglerSecretBulkFlags,
 	collectSpawnedProcessOutput,
+	isUndeployedLatestSecretError,
 	parseDotenv,
 	parseEnvSourceSpec,
 	retrySecretBulkUpload,
+	syncSecretsWithUndeployedLatestRecovery,
 	toDotenv,
 } from './sync-worker-secrets'
 
@@ -176,6 +178,77 @@ test('secret bulk omits empty --env so --name pins the unsuffixed script', () =>
 		'--config',
 		'packages/worker/wrangler-production.generated.json',
 	])
+
+	expect(
+		buildWranglerSecretBulkFlags(
+			{
+				...baseOptions,
+				env: '',
+				name: 'kody-platform',
+				config: 'packages/platform-worker/wrangler-production.generated.json',
+			},
+			secretsFile,
+			'versions',
+		),
+	).toEqual([
+		'versions',
+		'secret',
+		'bulk',
+		secretsFile,
+		'--name',
+		'kody-platform',
+		'--config',
+		'packages/platform-worker/wrangler-production.generated.json',
+	])
+})
+
+test('10215 undeployed-latest secret errors fall back to versions secret bulk', async () => {
+	const secretBulk10215 = {
+		exitCode: 1,
+		output: [
+			'🚨 Secrets failed to upload',
+			'',
+			'\u001b[31m✘ \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mA request to the Cloudflare API (/accounts/acct/workers/scripts/kody-platform/secrets-bulk) failed.\u001b[0m',
+			'',
+			"  Secret edit failed. You attempted to modify a secret, but the latest version of your Worker isn't currently deployed. [code: 10215]",
+		].join('\n'),
+	}
+	expect(isUndeployedLatestSecretError(secretBulk10215.output)).toBe(true)
+	expect(
+		isUndeployedLatestSecretError('Authentication error [code: 9109]'),
+	).toBe(false)
+
+	const calls: Array<'legacy' | 'versions'> = []
+	const fallbacks: Array<string> = []
+	const recovered = await syncSecretsWithUndeployedLatestRecovery({
+		runLegacy: async () => {
+			calls.push('legacy')
+			return secretBulk10215
+		},
+		runVersions: async () => {
+			calls.push('versions')
+			return { exitCode: 0, output: '✨ Success! Created version abc' }
+		},
+		retry: async (runAttempt) => runAttempt(),
+		onVersionsFallback: (output) => {
+			fallbacks.push(output)
+		},
+	})
+	expect(recovered.exitCode).toBe(0)
+	expect(calls).toEqual(['legacy', 'versions'])
+	expect(fallbacks).toHaveLength(1)
+
+	const authFailure = await syncSecretsWithUndeployedLatestRecovery({
+		runLegacy: async () => ({
+			exitCode: 1,
+			output: 'Authentication error [code: 9109]',
+		}),
+		runVersions: async () => {
+			throw new Error('versions fallback must not run for non-10215 errors')
+		},
+		retry: async (runAttempt) => runAttempt(),
+	})
+	expect(authFailure).toMatchObject({ exitCode: 1 })
 })
 
 test('secret bulk rejects --env with --name so it cannot target name-env', () => {
@@ -250,7 +323,10 @@ test('secret bulk retries a Cloudflare 503 then fails fast on real errors', asyn
 		delays: [25],
 		retries: [1],
 	})
-	expect(await upload([secretBulk503])).toMatchObject({ exitCode: 1, calls: 3 })
+	expect(await upload([secretBulk503])).toMatchObject({
+		exitCode: 1,
+		calls: 3,
+	})
 	expect(
 		await upload([
 			{ exitCode: 1, output: 'Authentication error [code: 9109]' },

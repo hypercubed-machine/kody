@@ -1178,6 +1178,9 @@ jobs:
       # Platform worker is trusted (same secret set as origin): MCP Durable
       # Objects execute capabilities that need OAuth, Stripe, and the rest.
       # --env "" with --name: same wrangler suffix pitfall as runtime.
+      # sync-worker-secrets recovers from Cloudflare 10215 (uploaded-but-
+      # undeployed latest version after a mid-flight deploy failure) via
+      # `wrangler versions secret bulk` without activating the orphan (#4027).
       - name: 🔐 Sync Cloudflare Secrets to platform worker (bulk)
         if: >-
           needs.sha-guard.outputs.deploy_platform == 'true' ||
