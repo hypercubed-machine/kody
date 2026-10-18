@@ -390,7 +390,13 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					href={publicAsset('/apple-touch-icon.png')}
 				/>
 				<link rel="manifest" href={publicAsset('/site.webmanifest')} />
-				<meta name="theme-color" {...documentThemeColors.light} />
+				{/* Dark Reader rewrites this first tag before hydration. Keep the
+				    browser extension's toolbar color instead of repairing it. */}
+				<meta
+					name="theme-color"
+					{...documentThemeColors.light}
+					suppressHydrationWarning
+				/>
 				<meta name="theme-color" {...documentThemeColors.dark} />
 				<script src={publicAsset('/page-init.js')} />
 				<link

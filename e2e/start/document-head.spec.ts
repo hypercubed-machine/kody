@@ -1,6 +1,50 @@
 import { expect, test } from '../playwright-utils.ts'
 import { heroBaseImage } from '../../packages/worker/universal/landing-images.ts'
 
+test('hydration preserves a browser extension toolbar color override', async ({
+	page,
+}) => {
+	const errors: Array<string> = []
+	page.on('pageerror', (error) => errors.push(error.message))
+	page.on('console', (message) => {
+		if (message.type() === 'error') errors.push(message.text())
+	})
+	await page.addInitScript(() => {
+		const observer = new MutationObserver(() => {
+			const meta = document.querySelector<HTMLMetaElement>(
+				'meta[name="theme-color"]',
+			)
+			if (!meta) return
+			// Dark Reader mutates the first theme-color tag, not the dark media tag.
+			meta.content = 'rgb(24, 26, 27)'
+			observer.disconnect()
+		})
+		observer.observe(document, { childList: true, subtree: true })
+	})
+	await page.goto('/pricing')
+	// A working SPA transition proves the initial document finished hydration.
+	const documentNavigations: Array<string> = []
+	page.on('request', (request) => {
+		if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+			documentNavigations.push(request.url())
+		}
+	})
+	await page.getByRole('link', { name: 'Docs', exact: true }).first().click()
+	await expect(page).toHaveURL(/\/docs/)
+	expect(documentNavigations).toEqual([])
+	await expect(
+		page.locator('head meta[name="theme-color"]').first(),
+	).toHaveAttribute('content', 'rgb(24, 26, 27)')
+	await expect(
+		page.locator(
+			'head meta[name="theme-color"][media="(prefers-color-scheme: dark)"]',
+		),
+	).toHaveAttribute('content', '#111417')
+	expect(
+		errors.filter((message) => /hydration|React client error/i.test(message)),
+	).toEqual([])
+})
+
 test('SSR preserves document metadata and critical resource ordering', async ({
 	browser,
 	baseURL,
