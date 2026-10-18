@@ -40,6 +40,7 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				deleted_at TEXT,
 				created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 				updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+				placement_json TEXT,
 				PRIMARY KEY (bucket_id, name)
 			)`,
 		)
@@ -56,6 +57,7 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				deleted_at TEXT,
 				created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 				updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+				placement_json TEXT,
 				PRIMARY KEY (user_id, provider_id)
 			)`,
 		)
