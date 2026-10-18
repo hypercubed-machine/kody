@@ -89,6 +89,12 @@ type SaveSecretInput = SecretOwnerContext & {
 	userEmail?: string | null
 	waitUntil?: (promise: Promise<unknown>) => void
 	credential?: SaveSecretCredential
+	/**
+	 * Placement written only when inserting a new `(bucket, name)` row.
+	 * Omitted → headers-only default. Explicit `null` preserves anywhere when
+	 * a scope/package move copies an existing credential into a new bucket.
+	 */
+	placementOnInsert?: CredentialFillPlacement | null
 }
 
 /**
@@ -292,7 +298,13 @@ export async function saveSecret(
 			event: credential.audit.event(credentialId),
 		})
 	} else {
-		await upsertSecretEntry({ db: input.env.APP_DB, row })
+		await upsertSecretEntry({
+			db: input.env.APP_DB,
+			row,
+			...('placementOnInsert' in input
+				? { placementOnInsert: input.placementOnInsert ?? null }
+				: {}),
+		})
 	}
 	if (
 		previousPlaintext !== null &&

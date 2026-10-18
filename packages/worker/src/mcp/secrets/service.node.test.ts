@@ -524,3 +524,50 @@ test('user secrets persist per-entry expiry, stay listed after expiry, and fail 
 		value: 'ghp_old',
 	})
 })
+
+test('scope move can preserve anywhere placement; brand-new Keys stay headers-only', async () => {
+	const { env } = await createSecretEnv()
+	const packageContext = ctx('pkg-move')
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'legacyAnywhere',
+		value: 'legacy-value',
+		// Explicit null: simulate a pre-default row (or a move preserving anywhere).
+		placementOnInsert: null,
+	})
+	await expect(
+		resolveSecret({ env, userId, name: 'legacyAnywhere', scope: 'user' }),
+	).resolves.toMatchObject({ found: true, placement: null })
+
+	await saveSecret({
+		env,
+		userId,
+		scope: 'package',
+		name: 'legacyAnywhere',
+		value: 'legacy-value',
+		storageContext: packageContext,
+		placementOnInsert: null,
+	})
+	await expect(
+		resolveSecret({
+			env,
+			userId,
+			name: 'legacyAnywhere',
+			scope: 'package',
+			storageContext: packageContext,
+		}),
+	).resolves.toMatchObject({ found: true, placement: null })
+
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'brandNew',
+		value: 'new-value',
+	})
+	await expect(
+		resolveSecret({ env, userId, name: 'brandNew', scope: 'user' }),
+	).resolves.toMatchObject({ found: true, placement: { headers: true } })
+})

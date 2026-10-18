@@ -5,6 +5,7 @@ import {
 import { earliestSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
 import { credentialGrantCleanupStatements } from '#worker/credentials/credential-grant-cleanup.ts'
 import {
+	type CredentialFillPlacement,
 	defaultNewCredentialFillPlacement,
 	serializeCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
@@ -350,8 +351,12 @@ function prepareUpsertSecretEntryStatement(input: {
 		created_at?: string
 		updated_at?: string
 	}
-	/** Set only on insert; conflict updates leave the existing placement. */
-	newCredentialPlacementJson: string
+	/**
+	 * Set only on insert; conflict updates leave the existing placement.
+	 * Null means anywhere (preserve on scope move). Non-null JSON is the
+	 * headers-only default for brand-new Keys.
+	 */
+	newCredentialPlacementJson: string | null
 }): D1PreparedStatement {
 	const now = new Date().toISOString()
 	return input.db
@@ -452,10 +457,20 @@ export async function upsertSecretEntry(input: {
 		created_at?: string
 		updated_at?: string
 	}
+	/**
+	 * Placement written only on INSERT. Omitted → headers-only default for
+	 * brand-new credentials. Explicit `null` keeps anywhere when copying an
+	 * existing row into a new bucket (scope / package move).
+	 */
+	placementOnInsert?: CredentialFillPlacement | null
 }): Promise<void> {
 	await prepareUpsertSecretEntryStatement({
-		...input,
-		newCredentialPlacementJson,
+		db: input.db,
+		row: input.row,
+		newCredentialPlacementJson:
+			'placementOnInsert' in input
+				? serializeCredentialFillPlacement(input.placementOnInsert ?? null)
+				: newCredentialPlacementJson,
 	}).run()
 }
 

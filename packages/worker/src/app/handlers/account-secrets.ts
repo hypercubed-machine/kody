@@ -49,6 +49,7 @@ import {
 	readStoredCredentialPlacement,
 	updateCredentialFields,
 } from '#worker/credentials/credential-fields.ts'
+import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
 import { type LoginExchange } from '#worker/credentials/login-resolver.ts'
 import {
 	persistIntegrationTokens,
@@ -1517,6 +1518,24 @@ export async function saveAccountSecret(input: {
 	const setsKeyHosts =
 		credential == null ? !keepsOptInHosts : credential.kind === 'secret'
 
+	// Scope/package moves insert under a new bucket. Preserve the source
+	// placement (including null = anywhere) so headers-only default does not
+	// narrow an existing credential.
+	let placementOnInsert: CredentialFillPlacement | null | undefined
+	if (currentSecret && !samePlacement && credential == null) {
+		const source = await findSecret({
+			env: input.env,
+			userId: ownerIdFromCaller({
+				request: input.user.request,
+				user: input.user.mcpUser,
+			}),
+			name: currentSecret.name,
+			scope: currentSecret.scope,
+			storageContext: getSecretContextForAccountSecret(currentSecret),
+		})
+		if (source.found) placementOnInsert = source.placement
+	}
+
 	let saved: Awaited<ReturnType<typeof saveSecret>>
 	try {
 		saved = await saveSecret({
@@ -1536,6 +1555,7 @@ export async function saveAccountSecret(input: {
 				packageId,
 			}),
 			...(credential ? { credential } : {}),
+			...(placementOnInsert !== undefined ? { placementOnInsert } : {}),
 		})
 		if (setsKeyHosts) {
 			await setSecretAllowedHosts({
