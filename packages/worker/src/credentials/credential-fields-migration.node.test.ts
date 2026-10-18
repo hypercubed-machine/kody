@@ -1,7 +1,10 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
-import { upsertIntegrationConnection } from '#worker/integrations/repo.ts'
+import {
+	getIntegrationFillPlacement,
+	upsertIntegrationConnection,
+} from '#worker/integrations/repo.ts'
 import { upsertSecretProviderBinding } from '#mcp/secrets/secret-providers/repo.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
@@ -131,12 +134,26 @@ test('connecting or reconnecting an integration records its OAuth app provider',
 
 	await upsertIntegrationConnection({ db, row })
 	expect(providerOf()).toEqual({ provider: 'github' })
+	expect(
+		await getIntegrationFillPlacement({
+			db,
+			userId: row.user_id,
+			name: row.name,
+		}),
+	).toEqual({ headers: true })
 
 	await upsertIntegrationConnection({
 		db,
 		row: { ...row, app_slug: null, platform_app_slug: 'kody-google' },
 	})
 	expect(providerOf()).toEqual({ provider: 'google' })
+	expect(
+		await getIntegrationFillPlacement({
+			db,
+			userId: row.user_id,
+			name: row.name,
+		}),
+	).toEqual({ headers: true })
 })
 
 test('a vault binding created or rebound after 0111 records its vault as its source', async () => {
