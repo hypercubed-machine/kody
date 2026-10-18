@@ -146,24 +146,32 @@ export const integrationTokenResolver: CredentialResolver<'integration-token'> =
 				async authorize() {
 					await authorizeIntegrationUse(call, lookup)
 					if (credential.fillSites && credential.fillSites.length > 0) {
-						const placement = await getIntegrationFillPlacement({
-							db: input.env.APP_DB,
-							userId: lookup.ownerId,
-							name: credential.name,
-						})
-						rememberFetchFillPlacement({
-							actor: call.input.actor,
-							orgId: call.input.orgId,
-							packageStamp: call.input.packageStamp,
-							credential,
-							placement,
-						})
-						observeFillPlacementWouldBlockSites({
-							credentialName: credential.name,
-							placement,
-							sites: credential.fillSites,
-							surface: 'placeholder',
-						})
+						// Observe only: a D1 blip must not fail the fill.
+						try {
+							const placement = await getIntegrationFillPlacement({
+								db: input.env.APP_DB,
+								userId: lookup.ownerId,
+								name: credential.name,
+							})
+							rememberFetchFillPlacement({
+								actor: call.input.actor,
+								orgId: call.input.orgId,
+								packageStamp: call.input.packageStamp,
+								credential,
+								placement,
+							})
+							observeFillPlacementWouldBlockSites({
+								credentialName: credential.name,
+								placement,
+								sites: credential.fillSites,
+								surface: 'placeholder',
+							})
+						} catch (error) {
+							console.warn('credential-fill-placement-observe-failed', {
+								credentialName: credential.name,
+								error: error instanceof Error ? error.message : String(error),
+							})
+						}
 					}
 					if (!credential.requestHost) return
 					const joined = await getJoinedIntegration({
