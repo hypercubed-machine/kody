@@ -1,13 +1,14 @@
-import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
 import { denyProfileBoundPackageCreate } from '#worker/authorization/authorize.ts'
 import { forkCommunityListing } from '#worker/community/service.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import {
+	requireMcpRequest,
+	requireMcpUser,
+} from '#mcp/capabilities/meta/require-user.ts'
 import { normalizePackageNameInput } from '#worker/package-registry/package-name.ts'
-import { getMcpUserPackageScope } from '#worker/package-registry/user-scope.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import {
 	communityContentWarning,
 	communityForkNextSteps,
@@ -65,10 +66,16 @@ export const communityForkCapability = defineDomainCapability(
 				env: ctx.env,
 				request: ctx.callerContext.request,
 			})
-			const expectedPackageScope = await getMcpUserPackageScope(
-				ctx.env.APP_DB,
+			// The fork's source, Artifacts repo, and fork row must be keyed by
+			// the org this connection is bound to, the same owner packageList,
+			// repoOpenSession, and packageGetGitRemote read. New signups have a
+			// personal org id distinct from their person id (#3053), so the
+			// person id is not a valid storage owner here.
+			const owner = await resolvePackageOwnerContext(ctx.env, {
 				user,
-			)
+				request: requireMcpRequest(ctx.callerContext),
+			})
+			const expectedPackageScope = owner.ownerScope
 			await reportCapabilityProgress(ctx.reportProgress, {
 				progress: 1,
 				total: 2,
@@ -86,12 +93,9 @@ export const communityForkCapability = defineDomainCapability(
 			const result = await forkCommunityListing({
 				env: ctx.env,
 				baseUrl: ctx.callerContext.baseUrl,
-				// Fork rows stay person-keyed. The follow is owned by the
-				// connection's org (personal org, or the team org this
-				// connection is bound to) so it matches followAdd.
-				userId: personalOrgId(user.userId),
-				followerOrgId: ownerIdFromCaller(ctx.callerContext),
-				creatorUserId: user.userId,
+				userId: owner.ownerUserId,
+				followerOrgId: owner.ownerUserId,
+				creatorUserId: owner.actorUserId,
 				expectedPackageScope,
 				listingId: args.listing_id,
 				kodyId,

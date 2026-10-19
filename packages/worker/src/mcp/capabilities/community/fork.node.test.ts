@@ -1,0 +1,104 @@
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { beforeEach, expect, test, vi } from 'vitest'
+import { createMcpCallerContext } from '#mcp/context.ts'
+
+const mocks = vi.hoisted(() => ({
+	forkCommunityListing: vi.fn(),
+	denyProfileBoundPackageCreate: vi.fn(),
+}))
+
+vi.mock('#worker/community/service.ts', () => ({
+	forkCommunityListing: (...args: Array<unknown>) =>
+		mocks.forkCommunityListing(...args),
+}))
+
+vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => {
+	const actual = await importOriginal<Record<string, unknown>>()
+	return {
+		...actual,
+		denyProfileBoundPackageCreate: (...args: Array<unknown>) =>
+			mocks.denyProfileBoundPackageCreate(...args),
+	}
+})
+
+const { communityForkCapability } = await import('./fork.ts')
+
+const personId = 'a'.repeat(64)
+const personalOrgIdValue = 'b'.repeat(64)
+
+function createContext(user: { personalOrgId?: string }) {
+	return {
+		env: { APP_DB: {} } as Env,
+		callerContext: createMcpCallerContext({
+			source: { kind: 'mcp-oauth' },
+			baseUrl: 'https://example.com',
+			executionOrigin: 'interactive',
+			user: {
+				userId: personIdFromStored(personId),
+				...(user.personalOrgId
+					? { personalOrgId: ownerIdFromStored(user.personalOrgId) }
+					: {}),
+				email: 'adwin@example.com',
+				displayName: 'Adwin',
+				username: 'adwin',
+			},
+		}),
+	}
+}
+
+beforeEach(() => {
+	mocks.forkCommunityListing.mockReset()
+	mocks.denyProfileBoundPackageCreate.mockReset()
+	mocks.denyProfileBoundPackageCreate.mockResolvedValue(undefined)
+	mocks.forkCommunityListing.mockResolvedValue({
+		forkId: 'fork-1',
+		packageId: 'pkg-1',
+		sourceId: 'source-1',
+		targetKodyId: 'google',
+		targetName: '@adwin/google',
+		originCommit: 'commit-1',
+		crossScopeReferences: [],
+		filesCount: 3,
+		files: {},
+	})
+})
+
+test('communityFork stores the fork under the personal org when it differs from the person id', async () => {
+	// New signups mint a personal org id distinct from the person id
+	// (#3053). The fork must land in the org that packageList and
+	// repoOpenSession read, not under the person id.
+	await communityForkCapability.handler(
+		{ listing_id: 'listing-1' },
+		createContext({ personalOrgId: personalOrgIdValue }),
+	)
+
+	expect(mocks.forkCommunityListing).toHaveBeenCalledTimes(1)
+	expect(mocks.forkCommunityListing).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: personalOrgIdValue,
+			followerOrgId: personalOrgIdValue,
+			creatorUserId: personId,
+			expectedPackageScope: 'adwin',
+			listingId: 'listing-1',
+		}),
+	)
+})
+
+test('communityFork keeps legacy equal-id personal orgs working', async () => {
+	await communityForkCapability.handler(
+		{ listing_id: 'listing-1' },
+		createContext({}),
+	)
+
+	expect(mocks.forkCommunityListing).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: personId,
+			followerOrgId: personId,
+			creatorUserId: personId,
+			expectedPackageScope: 'adwin',
+		}),
+	)
+})
