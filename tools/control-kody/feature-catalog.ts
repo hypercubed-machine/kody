@@ -398,19 +398,34 @@ function classifyRouteKind(routePath: string): RouteKind {
 	return 'html'
 }
 
-function prefixMatches(prefix: string, routePath: string) {
+/** Hub prefixes that must not swallow sibling Feature Map entries. */
+const exactOnlyPrefixes = ['/', '/account'] as const
+
+function isExactOnlyPrefix(prefix: string) {
+	return (exactOnlyPrefixes as ReadonlyArray<string>).includes(prefix)
+}
+
+/** Feature ownership match. Hubs `/` and `/account` are exact-only. */
+function ownershipPrefixMatches(prefix: string, routePath: string) {
 	if (routePath === prefix) return true
-	if (prefix === '/') return routePath === '/'
+	if (isExactOnlyPrefix(prefix)) return false
+	return routePath.startsWith(`${prefix}/`)
+}
+
+/** Required-prefix / exemption coverage (directory match; `/` stays exact). */
+function coveragePrefixMatches(prefix: string, routePath: string) {
+	if (routePath === prefix) return true
+	if (prefix === '/') return false
 	return routePath.startsWith(`${prefix}/`)
 }
 
 function isExemptRoute(routePath: string) {
 	return exemptRoutePrefixes.some(({ prefix }) =>
-		prefixMatches(prefix, routePath),
+		coveragePrefixMatches(prefix, routePath),
 	)
 }
 
-/** Longest matching feature prefix wins; hubs like `/` and `/account` are exact-only via shorter competing prefixes. */
+/** Longest matching feature prefix wins; `/` and `/account` are exact-only hubs. */
 function assignFeatureId(
 	routePath: string,
 	catalog: ReadonlyArray<Feature> = featureCatalog,
@@ -418,7 +433,7 @@ function assignFeatureId(
 	let best: { id: string; length: number } | null = null
 	for (const feature of catalog) {
 		for (const prefix of feature.prefixes) {
-			if (!prefixMatches(prefix, routePath)) continue
+			if (!ownershipPrefixMatches(prefix, routePath)) continue
 			if (!best || prefix.length > best.length) {
 				best = { id: feature.id, length: prefix.length }
 			}
@@ -453,7 +468,7 @@ export function formatRouteInventory(
 ) {
 	const filtered = routes.filter((route) => {
 		if (filter?.featureId && route.featureId !== filter.featureId) return false
-		if (filter?.prefix && !prefixMatches(filter.prefix, route.path))
+		if (filter?.prefix && !coveragePrefixMatches(filter.prefix, route.path))
 			return false
 		return true
 	})
@@ -554,8 +569,8 @@ function notesCoverRequiredPrefix(
 	return catalog.some((feature) =>
 		feature.prefixes.some(
 			(owned) =>
-				prefixMatches(requiredPrefix, owned) ||
-				prefixMatches(owned, requiredPrefix) ||
+				coveragePrefixMatches(requiredPrefix, owned) ||
+				coveragePrefixMatches(owned, requiredPrefix) ||
 				owned === requiredPrefix,
 		),
 	)
@@ -628,7 +643,9 @@ export function checkFeatureCatalog(input: {
 		if (route.featureId) continue
 		if (isExemptRoute(route.path)) continue
 		if (
-			!requiredNotesPrefixes.some((prefix) => prefixMatches(prefix, route.path))
+			!requiredNotesPrefixes.some((prefix) =>
+				coveragePrefixMatches(prefix, route.path),
+			)
 		) {
 			continue
 		}

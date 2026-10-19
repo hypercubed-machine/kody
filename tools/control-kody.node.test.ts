@@ -1338,11 +1338,18 @@ test('control-kody map --check reports unmapped required routes and unknown note
 			'utf8',
 		).replace(
 			'export interface FileRoutesByFullPath {',
-			"export interface FileRoutesByFullPath {\n  '/@{$orgSlug}/-/brand-new': unknown",
+			"export interface FileRoutesByFullPath {\n  '/account/new-surface': unknown\n  '/@{$orgSlug}/-/brand-new': unknown",
 		),
 		featuresDir: temp.dir,
 	})
 	expect(unmapped.ok).toBe(false)
+	expect(
+		unmapped.issues.some(
+			(issue) =>
+				issue.kind === 'unmapped-required' &&
+				issue.path === '/account/new-surface',
+		),
+	).toBe(true)
 	expect(
 		unmapped.issues.some(
 			(issue) =>
