@@ -4,7 +4,7 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/activity --contains 'Activity'
+npm run control-kody -- request GET /@jane/-/activity --contains 'Activity'
 ```
 
 ## Assert

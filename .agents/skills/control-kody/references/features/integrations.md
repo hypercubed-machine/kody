@@ -4,7 +4,7 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/integrations --contains 'Integrations'
+npm run control-kody -- request GET /@jane/-/integrations --contains 'Integrations'
 ```
 
 Real third-party OAuth needs a preview (or production-like) environment.

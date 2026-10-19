@@ -4,7 +4,7 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/memories --contains 'Memories'
+npm run control-kody -- request GET /@jane/-/memories --contains 'Memories'
 ```
 
 Create memories via `execute` / memory capabilities when asserting detail pages.

@@ -7,8 +7,8 @@ fixtures after `node tools/seed-test-data.ts --local`.
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- package-create --package-name demo-pkg
-npm run control-kody -- request GET /@{$username} --contains 'Repositories'
+npm run control-kody -- package-create --origin <preview> --package-name demo-pkg
+npm run control-kody -- request GET /@jane --contains 'Repositories'
 npm run control-kody -- request GET /account/packages.json --contains 'packages'
 ```
 

@@ -4,7 +4,7 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/webhooks --contains 'Webhooks'
+npm run control-kody -- request GET /@jane/-/webhooks --contains 'Webhooks'
 ```
 
 Minted ingress URLs live under

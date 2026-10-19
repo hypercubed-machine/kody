@@ -4,7 +4,7 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/jobs --contains 'Jobs'
+npm run control-kody -- request GET /@jane/-/jobs --contains 'Jobs'
 ```
 
 Create a job via `execute` / MCP when asserting non-empty list.

@@ -4,7 +4,7 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/agents --contains 'Agents'
+npm run control-kody -- request GET /@jane/-/agents --contains 'Agents'
 ```
 
 Local personal org slug is typically the seed username (`user-me` on preview,

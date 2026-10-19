@@ -4,7 +4,7 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/mcp-servers --contains 'MCP'
+npm run control-kody -- request GET /@jane/-/mcp-servers --contains 'MCP'
 ```
 
 ## Assert

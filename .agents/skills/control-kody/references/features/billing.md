@@ -4,8 +4,8 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/usage --contains 'Usage'
-npm run control-kody -- request GET /@{$orgSlug}/-/billing --contains 'Billing'
+npm run control-kody -- request GET /@jane/-/usage --contains 'Usage'
+npm run control-kody -- request GET /@jane/-/billing --contains 'Billing'
 ```
 
 Stripe checkout / webhooks need preview or production-like config.

@@ -4,8 +4,8 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/waiting --dump --contains 'Waiting'
-npm run control-kody -- browse --path /@{$orgSlug}/-/waiting
+npm run control-kody -- request GET /@jane/-/waiting --dump --contains 'Waiting'
+npm run control-kody -- browse --path /@jane/-/waiting
 ```
 
 Seed accounts usually still show first-use setup cards until gates clear. Create

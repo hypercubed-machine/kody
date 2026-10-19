@@ -4,7 +4,7 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@{$orgSlug}/-/email --contains 'Email'
+npm run control-kody -- request GET /@jane/-/email --contains 'Email'
 ```
 
 Inbound mail from third parties needs a preview / production-like environment.

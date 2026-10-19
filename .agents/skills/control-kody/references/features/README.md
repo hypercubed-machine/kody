@@ -52,3 +52,7 @@ or a notes file is missing / orphaned. CI runs the same check via
 | Local       | `jane@example.com`  | `ilikecode` | Non-admin. Prefer this.                 |
 | Local       | `kody@example.com`  | `ilikecode` | Admin. Avoid unless needed.             |
 | Preview     | `me@kentcdodds.com` | `ilikecode` | Non-admin. Empty until you create data. |
+
+Runnable `request` / `browse` examples use `/@jane` (local). On preview, use
+`/@user-me` instead. Assert sections keep inventory placeholders
+(`/@{$orgSlug}`, `/@{$username}`).

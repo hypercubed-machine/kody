@@ -167,12 +167,18 @@ The session file records the org next to the bearer token. A later call with a
 different `--org`, or with `--org` omitted, remints that token and keeps the
 login cookie.
 
-## Feature Map drift (retired daily garden)
+## Daily garden
 
-Drift is caught by the `feature-map:check` CI step (next to `primitives:check`
-in validate). The daily Kody job `@kentcdodds/verification-skill-maintain` is
-paused/retired — the package stays published, but the scheduled job is disabled.
-Re-enable with `jobUpdate` only if CI coverage is not enough.
+`@kentcdodds/verification-skill-maintain` runs every day at 06:00
+America/Denver. It scans the Feature Map on `kody-hq/kody` `main` and spawns one
+Cursor Cloud Agent when the catalog is stale or a required route is unmapped.
+The agent updates the map, follows
+[`ship-pr`](../../.agents/skills/ship-pr/SKILL.md) for low or medium risk, and
+records an outcome. Pause with
+`kody:@kentcdodds/verification-skill-maintain/pause`.
+
+This is the same shape as the [friction log](./friction-log.md) and e2e flake
+hunter packages: a Kody job, not a GitHub cron.
 
 ## Related
 
