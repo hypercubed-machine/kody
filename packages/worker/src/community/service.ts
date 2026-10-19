@@ -2158,7 +2158,15 @@ export async function absorbCommunityForkUpstream(input: {
 
 export async function rateCommunityListing(input: {
 	env: Env
+	/** Rater. Ratings stay person-keyed. */
 	userId: OwnerId
+	/**
+	 * Org whose forks count as the rater's prior fork: the org the
+	 * connection is bound to. communityFork keys fork rows by that org, which
+	 * differs from the person id for new signups (#3053). Omit for legacy
+	 * callers where the two are equal.
+	 */
+	forkOwnerId?: OwnerId
 	listingId: string
 	stars: number
 	adaptationEffort: number
@@ -2175,14 +2183,26 @@ export async function rateCommunityListing(input: {
 			`Catalog entry "${input.listingId}" was not found.`,
 		)
 	}
-	if (listing.ownerUserId === input.userId) {
+	const forkOwnerId = input.forkOwnerId ?? input.userId
+	if (
+		listing.ownerUserId === input.userId ||
+		listing.ownerUserId === forkOwnerId
+	) {
 		throw new CommunityActionError('You cannot rate your own listing.')
 	}
 
-	const fork = await getCommunityForkByListingAndUser(input.env.APP_DB, {
-		listingId: input.listingId,
-		userId: input.userId,
-	})
+	// Forks from before the owner fix may still be keyed by the person id.
+	const fork =
+		(await getCommunityForkByListingAndUser(input.env.APP_DB, {
+			listingId: input.listingId,
+			userId: forkOwnerId,
+		})) ??
+		(forkOwnerId === input.userId
+			? null
+			: await getCommunityForkByListingAndUser(input.env.APP_DB, {
+					listingId: input.listingId,
+					userId: input.userId,
+				}))
 	if (!fork) {
 		// Precondition the agent can clear: fork first, then rate.
 		throw new CommunityActionError('Fork this public package before rating it.')

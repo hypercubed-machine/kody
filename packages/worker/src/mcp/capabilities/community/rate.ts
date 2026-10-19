@@ -4,6 +4,7 @@ import { rateCommunityListing } from '#worker/community/service.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 
 export const communityRateCapability = defineDomainCapability(
 	capabilityDomainNames.community,
@@ -44,8 +45,10 @@ export const communityRateCapability = defineDomainCapability(
 			const user = requireMcpUser(ctx.callerContext)
 			await rateCommunityListing({
 				env: ctx.env,
-				// person-keyed (not personal org)
+				// The rating is person-keyed (not personal org).
 				userId: personalOrgId(user.userId),
+				// communityFork keys the fork by the bound org.
+				forkOwnerId: ownerIdFromCaller(ctx.callerContext),
 				listingId: args.listing_id,
 				stars: args.stars,
 				adaptationEffort: args.adaptation_effort,

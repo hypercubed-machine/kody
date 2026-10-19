@@ -1042,6 +1042,71 @@ test('rateCommunityListing requires a prior non-owner fork and persists valid ra
 	})
 })
 
+test('rateCommunityListing finds a fork owned by the rater org when it differs from the person id', async () => {
+	// New signups have a personal org id distinct from their person id
+	// (#3053). communityFork keys the fork row by that org; the rating
+	// stays person-keyed.
+	mockModule.getCommunityBan.mockResolvedValue(null)
+	mockModule.getCommunityListingById.mockResolvedValue(sampleListing())
+	mockModule.upsertCommunityRating.mockResolvedValue({
+		id: 'rating-1',
+		listingId: 'listing-1',
+		userId: ownerIdFromStored('person-2'),
+		stars: 4,
+		adaptationEffort: 1,
+		note: null,
+		createdAt: '2026-07-01T00:00:00.000Z',
+		updatedAt: '2026-07-01T00:00:00.000Z',
+	})
+	mockModule.getCommunityForkByListingAndUser.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === 'org-2'
+				? forkRecord({ forkerUserId: 'org-2', targetKodyId: 'discord-gateway' })
+				: null,
+	)
+
+	await rateCommunityListing({
+		env: createEnv(),
+		userId: ownerIdFromStored('person-2'),
+		forkOwnerId: ownerIdFromStored('org-2'),
+		listingId: 'listing-1',
+		stars: 4,
+		adaptationEffort: 1,
+	})
+
+	expect(mockModule.upsertCommunityRating).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			listing_id: 'listing-1',
+			user_id: ownerIdFromStored('person-2'),
+		}),
+	)
+})
+
+test('rateCommunityListing rejects rating a listing the rater org owns', async () => {
+	mockModule.getCommunityBan.mockResolvedValue(null)
+	mockModule.getCommunityListingById.mockResolvedValue(sampleListing())
+	mockModule.getCommunityForkByListingAndUser.mockResolvedValue(
+		forkRecord({ targetKodyId: 'discord-gateway' }),
+	)
+
+	await expect(
+		rateCommunityListing({
+			env: createEnv(),
+			userId: ownerIdFromStored('person-1'),
+			forkOwnerId: ownerIdFromStored('owner-1'),
+			listingId: 'listing-1',
+			stars: 5,
+			adaptationEffort: 1,
+		}),
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof CommunityActionError &&
+			error.message === 'You cannot rate your own listing.',
+	)
+	expect(mockModule.upsertCommunityRating).not.toHaveBeenCalled()
+})
+
 test('forkCommunityListing follows the upstream package on the forker org', async () => {
 	mockForkable()
 	mockModule.ensureFollowForCommunityFork.mockClear()
