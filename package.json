@@ -60,6 +60,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "primitives:check": "node .agents/skills/visual-recap/scripts/check-primitives-map.mjs",
+    "feature-map:check": "node tools/control-kody.ts map --check",
     "primitives:classify": "node .agents/skills/visual-recap/scripts/classify-primitives.mjs",
     "docs:check-temporal": "node tools/check-docs-temporal-language.ts",
     "docs:check-decisions": "node tools/check-decision-record-numbers.ts",

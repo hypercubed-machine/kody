@@ -90,6 +90,11 @@ export const parallelValidateLegs = [
 		weight: 'check',
 	},
 	{
+		name: 'feature-map',
+		command: 'npm run feature-map:check',
+		weight: 'check',
+	},
+	{
 		name: 'migrations',
 		command: 'npm run migrations:check',
 		weight: 'check',

@@ -42,16 +42,19 @@ the merge being live.
 ## Feature Map
 
 [`.agents/skills/control-kody/references/features/`](../../.agents/skills/control-kody/references/features/README.md)
-is the human index.
+holds verification notes (how to seed, reach, and assert). The route inventory
+is generated from
+[`packages/worker/start/routeTree.gen.ts`](../../packages/worker/start/routeTree.gen.ts)
+(`FileRoutesByFullPath`). Feature prefixes in
 [`tools/control-kody/feature-catalog.ts`](../../tools/control-kody/feature-catalog.ts)
-is the catalog `map --check` and `tools/control-kody.node.test.ts` enforce
-against
-[`packages/worker/universal/routes.ts`](../../packages/worker/universal/routes.ts).
+only group that inventory — do not hand-maintain path lists.
 
-When you add, remove, or rename a user-facing HTML route under `/account`,
-`/admin`, `/login`, `/onboarding`, `/community`, or `/@`, update the catalog and
-the matching feature file in the same change. Run `map --check` before opening a
-Feature Map PR.
+`map` prints the generated inventory (optionally filtered by feature id).
+`map --check` (and `npm run feature-map:check` in CI) fails when notes cite
+unknown routes, a required user-facing prefix has no notes (and no exemption),
+or a notes file is missing / orphaned. When you add a new user-facing area, add
+a short notes file and a prefix in the catalog; leaf routes under an existing
+prefix need no catalog edit.
 
 After `login`, keep using `request` for HTML and JSON assertions. Do not `cat`
 the session cookie into `curl` or Python. `request --dump` writes the raw body
@@ -164,18 +167,12 @@ The session file records the org next to the bearer token. A later call with a
 different `--org`, or with `--org` omitted, remints that token and keeps the
 login cookie.
 
-## Daily garden
+## Feature Map drift (retired daily garden)
 
-`@kentcdodds/verification-skill-maintain` runs every day at 06:00
-America/Denver. It scans the Feature Map on `kody-hq/kody` `main` and spawns one
-Cursor Cloud Agent when the catalog is stale or a required route is unmapped.
-The agent updates the map, follows
-[`ship-pr`](../../.agents/skills/ship-pr/SKILL.md) for low or medium risk, and
-records an outcome. Pause with
-`kody:@kentcdodds/verification-skill-maintain/pause`.
-
-This is the same shape as the [friction log](./friction-log.md) and e2e flake
-hunter packages: a Kody job, not a GitHub cron.
+Drift is caught by the `feature-map:check` CI step (next to `primitives:check`
+in validate). The daily Kody job `@kentcdodds/verification-skill-maintain` is
+paused/retired — the package stays published, but the scheduled job is disabled.
+Re-enable with `jobUpdate` only if CI coverage is not enough.
 
 ## Related
 

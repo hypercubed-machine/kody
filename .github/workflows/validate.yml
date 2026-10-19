@@ -239,6 +239,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run primitives:check
 
+      - name: 🗺️ Feature Map
+        if: ${{ !cancelled() }}
+        run: npm run feature-map:check
+
       - name: 🗄️ Migrations
         if: ${{ !cancelled() }}
         run: npm run migrations:check

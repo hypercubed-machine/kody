@@ -9,7 +9,7 @@ description: >
 # control-kody
 
 Do not invent a throwaway curl script, scrape PR comments by hand, or rediscover
-account routes from `routes.ts`. Use the CLI and the Feature Map.
+account routes from `routeTree.gen.ts`. Use the CLI and the Feature Map.
 
 ```bash
 npm run control-kody -- doctor
@@ -66,10 +66,13 @@ seeded.
 
 ## Feature Map
 
-[references/features/README.md](./references/features/README.md) is the
-human-readable index. `tools/control-kody/feature-catalog.ts` is the
-machine-readable source. `map --check` (and its node test) fail when a listed
-path leaves `routes.ts` or a required HTML route has no entry.
+[references/features/README.md](./references/features/README.md) is verification
+notes (seed, reach, assert). Routes are generated from
+`packages/worker/start/routeTree.gen.ts` (`FileRoutesByFullPath`); feature
+prefixes in `tools/control-kody/feature-catalog.ts` only group that inventory.
+`map` prints the generated inventory; `map --check` fails when notes cite
+unknown routes, a required user-facing prefix has no notes (and no exemption),
+or a notes file is missing / orphaned. CI runs `npm run feature-map:check`.
 
 Load **one** feature file for the surface you are changing. Run `map --check`
 before opening a Feature Map PR.

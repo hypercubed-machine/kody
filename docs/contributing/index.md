@@ -21,8 +21,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Manual PR preview testing](./preview-manual-testing.md)
 - [Preview migration rehearsal](./preview-migration-rehearsal.md) (seed,
   snapshot, migrate, verify, restore on a branch preview; operator/CI only)
-- [control-kody](./control-kody.md) (Feature Map + CLI; daily
-  `@kentcdodds/verification-skill-maintain`)
+- [control-kody](./control-kody.md) (Feature Map + CLI; `feature-map:check` in
+  CI; daily garden job paused)
 - [Optional Cloudflare offerings](./cloudflare-offerings.md)
 - [Cursor Cloud Agent notes](./cloud-agents.md)
 - [Nx remote cache](../../packages/nx-cache/readme.md) (self-hosted HTTP cache
