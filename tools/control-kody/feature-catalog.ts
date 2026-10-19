@@ -1,4 +1,4 @@
-export type RouteKind =
+type RouteKind =
 	| 'html'
 	| 'json'
 	| 'raw'
@@ -295,7 +295,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 ]
 
 /** User-facing prefixes that must have notes (or an exemption). */
-export const requiredNotesPrefixes = [
+const requiredNotesPrefixes = [
 	'/login',
 	'/signup',
 	'/onboarding',
@@ -316,7 +316,7 @@ export const requiredNotesPrefixes = [
  * Generated routes under these prefixes do not need Feature Map notes.
  * Keep reasons short; this is the allowlist for "no verification notes".
  */
-export const exemptRoutePrefixes: ReadonlyArray<{
+const exemptRoutePrefixes: ReadonlyArray<{
 	prefix: string
 	reason: string
 }> = [
@@ -333,7 +333,7 @@ export const exemptRoutePrefixes: ReadonlyArray<{
 
 // Read the generated native route inventory without importing UI or server modules.
 // This is source inspection for the CLI, not a second route matcher.
-export function extractNativePaths(source: string) {
+function extractNativePaths(source: string) {
 	const inventory = source.match(
 		/export interface FileRoutesByFullPath \{([\s\S]*?)\n\}/,
 	)?.[1]
@@ -348,7 +348,7 @@ export function extractNativePaths(source: string) {
 	].toSorted()
 }
 
-export function classifyRouteKind(routePath: string): RouteKind {
+function classifyRouteKind(routePath: string): RouteKind {
 	if (routePath === '/404' || routePath === '/500') return 'error'
 	if (routePath.startsWith('/.well-known')) return 'well-known'
 	if (
@@ -411,7 +411,7 @@ function isExemptRoute(routePath: string) {
 }
 
 /** Longest matching feature prefix wins; hubs like `/` and `/account` are exact-only via shorter competing prefixes. */
-export function assignFeatureId(
+function assignFeatureId(
 	routePath: string,
 	catalog: ReadonlyArray<Feature> = featureCatalog,
 ): string | null {
@@ -500,7 +500,7 @@ export type CatalogCheckIssue = {
 }
 
 /** Normalize a path written in notes to the FileRoutesByFullPath form. */
-export function normalizeNotesRouteRef(raw: string): string {
+function normalizeNotesRouteRef(raw: string): string {
 	let path = raw.trim()
 	const hash = path.indexOf('#')
 	if (hash >= 0) path = path.slice(0, hash)
@@ -524,7 +524,7 @@ export function normalizeNotesRouteRef(raw: string): string {
  * Paths in backticks that look like app routes. Skips prose examples that are
  * not rooted paths (no spaces, starts with `/`).
  */
-export function extractNotesRouteRefs(markdown: string): Array<string> {
+function extractNotesRouteRefs(markdown: string): Array<string> {
 	const refs = new Set<string>()
 	for (const match of markdown.matchAll(/`(\/[^`\s]+)`/g)) {
 		const raw = match[1]!
