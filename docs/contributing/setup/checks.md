@@ -36,10 +36,9 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   `skills-lock.json` or any path under `.agents/skills/` also runs
   `node tools/check-skills-lock.ts`. `skills-lock.json` counts with docs for
   this hook: a push of only the lock, skill markdown, and other docs skips
-  `knip` and
-  `test:push`. A non-markdown file under `.agents/skills/` (a script or a test)
-  still runs `knip` and `test:push`, as does any other source file. An
-  unreadable push path list runs the skills-lock check too. Deleting a remote
+  `knip` and `test:push`. A non-markdown file under `.agents/skills/` (a script
+  or a test) still runs `knip` and `test:push`, as does any other source file.
+  An unreadable push path list runs the skills-lock check too. Deleting a remote
   branch skips knip, the suites, and the skills-lock check. An update diffs the
   remote tip against the local tip, so a later docs-only push does not retest
   commits already on the remote. A new branch diffs against the merge base of
