@@ -102,14 +102,20 @@ before opening a Feature Map PR.
 
 ## Proof
 
-CI green is not enough for a user-visible account change. Prefer:
+CI green is not enough for a user-visible account change. **Local verification
+is the default** — prefer `dev` / `login` / `request` / `browse` / `execute` on
+localhost before a PR preview:
 
-1. `doctor` then `dev` or `preview`
-2. `request` (`--dump` / `--contains`) or `--check` as the seed user **with data
-   for this change**
-3. When UI is under test: `browse --origin <origin> --path <path>` (or
-   computerUse with `/login?redirectTo=<path>` and the public seed credentials).
-   Prefer MCP/API otherwise.
+1. `doctor` then `dev` (migrate + seed if `login` says so)
+2. `request` (`--dump` / `--contains`) as the local seed user **with data for
+   this change**; when UI is under test, `browse --path <path>` (or computerUse
+   with `/login?redirectTo=<path>` and the public seed credentials). Prefer
+   MCP/API/`execute` otherwise.
+3. Use a PR `preview` only when local cannot exercise the change: Workers /
+   service bindings, Durable Objects, real OAuth or inbound third-party
+   webhooks, deploy/wrangler/config, Artifacts/`packageSave`, or other
+   production-like surfaces (see
+   [Local limitations](../../../docs/contributing/cloud-agents.md#local-limitations)).
 4. After merge, `health --origin https://kody.codes --sha <merge>` (full SHA,
    unique short SHA, or a later descendant HEAD that contains the merge)
 

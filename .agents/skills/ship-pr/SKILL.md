@@ -65,7 +65,13 @@ npx @kodycodes/cli execute --local \
   `./send-summary`. Take `agentId` and `model` from the agent socket. Omit
   `model` when the socket has none. Do not invent URLs. When UI routes deployed,
   put verified page links in Discord `extras`.
-- This repo, medium or high: preview with
-  [control-kody](../control-kody/SKILL.md). PR bodies say `Related to #N`, never
-  `does not close #N`. Non-trivial descriptions include a system recap
-  ([visual-recap](../visual-recap/SKILL.md)).
+- This repo, medium or high: verify locally with
+  [control-kody](../control-kody/SKILL.md) (`dev`/`login`/`request`/`browse`/
+  `execute`). Use a PR preview only when local cannot exercise the change
+  (Workers/service bindings, Durable Objects, real OAuth or inbound third-party
+  webhooks, deploy/wrangler/config, Artifacts/`packageSave`). PR bodies say
+  `Related to #N`, never `does not close #N`. Non-trivial descriptions include a
+  system recap ([visual-recap](../visual-recap/SKILL.md)).
+- Reviewers must scrutinize test-expectation / assertion changes made in the
+  same PR as the code they test, and push back when an assertion was rewritten
+  to match a behavior change without justification.

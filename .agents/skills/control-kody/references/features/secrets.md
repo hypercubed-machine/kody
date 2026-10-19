@@ -4,7 +4,8 @@
 
 ```bash
 npm run control-kody -- login
-npm run control-kody -- request GET /@jane/-/secrets --contains 'Secrets'
+npm run control-kody -- request GET /@jane/-/secrets 302 --contains '/@jane/-/credentials'
+npm run control-kody -- request GET /@jane/-/credentials --contains 'Credentials'
 ```
 
 Create fixtures with `control-kody execute` / `search` (secret capabilities),
