@@ -75,3 +75,9 @@ test('runCheckGroup treats a thrown spawn error as a failed member and continues
 	expect(lines).toContain('deps: lockfile:check failed (spawn npm ENOENT)')
 	expect(lines.at(-1)).toBe('deps: failed checks: lockfile:check')
 })
+
+test('docs and deps members point at tools scripts directly', () => {
+	for (const member of [...checkGroups.docs, ...checkGroups.deps]) {
+		expect(member.tool).toMatch(/^tools\/.+\.ts$/)
+	}
+})

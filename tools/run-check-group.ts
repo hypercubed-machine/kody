@@ -6,29 +6,42 @@
  */
 
 import { spawn } from 'node:child_process'
-import { resolveNpmCommand, isExecutedDirectly } from './node-runtime.ts'
+import { isExecutedDirectly } from './node-runtime.ts'
 
 export type CheckGroupMember = {
+	/** Stable name used in failure summaries. */
 	name: string
-	/** npm script name (kept while per-check scripts still exist). */
-	script: string
+	/** Repo-relative path passed to `node` (no npm script indirection). */
+	tool: string
 }
 
 export const checkGroups = {
 	docs: [
-		{ name: 'docs:check-temporal', script: 'docs:check-temporal' },
-		{ name: 'docs:check-decisions', script: 'docs:check-decisions' },
-		{ name: 'docs:check-file-refs', script: 'docs:check-file-refs' },
+		{
+			name: 'docs:check-temporal',
+			tool: 'tools/check-docs-temporal-language.ts',
+		},
+		{
+			name: 'docs:check-decisions',
+			tool: 'tools/check-decision-record-numbers.ts',
+		},
+		{
+			name: 'docs:check-file-refs',
+			tool: 'tools/check-markdown-file-refs.ts',
+		},
 		{
 			name: 'docs:check-no-hosted-execute',
-			script: 'docs:check-no-hosted-execute',
+			tool: 'tools/check-docs-no-hosted-execute.ts',
 		},
-		{ name: 'mermaid:check', script: 'mermaid:check' },
+		{ name: 'mermaid:check', tool: 'tools/check-mermaid-syntax.ts' },
 	],
 	deps: [
-		{ name: 'lockfile:check', script: 'lockfile:check' },
-		{ name: 'overrides:check', script: 'overrides:check' },
-		{ name: 'skills-lock:check', script: 'skills-lock:check' },
+		{ name: 'lockfile:check', tool: 'tools/check-lockfile-peer-drift.ts' },
+		{
+			name: 'overrides:check',
+			tool: 'tools/check-dependency-overrides.ts',
+		},
+		{ name: 'skills-lock:check', tool: 'tools/check-skills-lock.ts' },
 	],
 } as const satisfies Record<string, readonly CheckGroupMember[]>
 
@@ -38,8 +51,8 @@ export function isCheckGroupName(value: string): value is CheckGroupName {
 	return Object.hasOwn(checkGroups, value)
 }
 
-export function runNpmScript(
-	script: string,
+export function runNodeTool(
+	tool: string,
 	options: {
 		spawnImpl?: typeof spawn
 		cwd?: string
@@ -48,7 +61,7 @@ export function runNpmScript(
 ): Promise<number> {
 	const spawnImpl = options.spawnImpl ?? spawn
 	return new Promise((resolve, reject) => {
-		const child = spawnImpl(resolveNpmCommand(), ['run', script], {
+		const child = spawnImpl(process.execPath, [tool], {
 			cwd: options.cwd,
 			env: options.env ?? process.env,
 			stdio: 'inherit',
@@ -68,8 +81,7 @@ export async function runCheckGroup(
 	} = {},
 ): Promise<{ ok: boolean; failed: string[] }> {
 	const log = options.log ?? ((line) => console.log(line))
-	const runMember =
-		options.runMember ?? ((member) => runNpmScript(member.script))
+	const runMember = options.runMember ?? ((member) => runNodeTool(member.tool))
 	const members = checkGroups[groupName]
 	const failed: string[] = []
 	for (const member of members) {

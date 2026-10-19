@@ -86,7 +86,8 @@ exist. `git push` then runs `npm run knip` and `npm run test:push`
 (`test:node` + `test:workers`) when the push changes a non-docs path, and can
 upload those Nx remote-cache artifacts before GitHub Actions starts. A docs-only
 push skips knip and the suites. A push that touches `skills-lock.json` or
-`.agents/skills/` still runs `npm run skills-lock:check`.
+`.agents/skills/` still runs `node tools/check-skills-lock.ts` (also part of
+`npm run deps:check`).
 
 Playwright E2E is not in the push hook: that suite is heavier than the unit
 gate, and a failed e2e leg skips the unit gate when the push is retried with

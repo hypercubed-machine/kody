@@ -63,18 +63,8 @@
     "feature-map:check": "node tools/control-kody.ts map --check",
     "primitives:classify": "node .agents/skills/visual-recap/scripts/classify-primitives.mjs",
     "docs:check": "node tools/run-check-group.ts docs",
-    "docs:check-temporal": "node tools/check-docs-temporal-language.ts",
-    "docs:check-decisions": "node tools/check-decision-record-numbers.ts",
-    "docs:check-file-refs": "node tools/check-markdown-file-refs.ts",
-    "docs:check-no-hosted-execute": "node tools/check-docs-no-hosted-execute.ts",
     "deps:check": "node tools/run-check-group.ts deps",
-    "lockfile:check": "node tools/check-lockfile-peer-drift.ts",
-    "skills-lock:check": "node tools/check-skills-lock.ts",
-    "overrides:check": "node tools/check-dependency-overrides.ts",
-    "mermaid:check": "node tools/check-mermaid-syntax.ts",
-    "file-size-ratchet:check": "node tools/check-file-size-ratchet.ts",
     "error-agent-prompt:check": "node tools/check-error-agent-prompt.ts",
-    "decorative-banners:check": "node tools/check-decorative-banners.ts",
     "slop-ratchet:check": "node tools/check-file-size-ratchet.ts && node tools/check-decorative-banners.ts",
     "knip": "knip",
     "cli:validate": "npm run validate -w @kodycodes/cli",
@@ -137,10 +127,7 @@
     "@playwright/test": "^1.63.0",
     "@sentry/cli": "^3.8.0",
     "@types/node": "^26.6.4",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
     "@types/semver": "^7.8.0",
-    "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.5",
     "dotenv": "^18.0.5",
     "esbuild": "^0.28.2",
@@ -159,7 +146,11 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.147.0"
+    "wrangler": "^4.147.0",
+    "@tanstack/intent": "0.5.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2"
   },
   "overrides": {
     "@modelcontextprotocol/client": "2.3.1",
@@ -215,5 +206,17 @@
     "sharp": true,
     "unrs-resolver": true,
     "workerd": true
+  },
+  "intent": {
+    "skills": [
+      "@tanstack/react-start",
+      "@tanstack/react-router",
+      "@tanstack/router-core",
+      "@tanstack/start-client-core",
+      "@tanstack/start-server-core",
+      "@tanstack/router-plugin",
+      "@tanstack/virtual-file-routes",
+      "@tanstack/redact"
+    ]
   }
 }

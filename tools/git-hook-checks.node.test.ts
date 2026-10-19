@@ -113,7 +113,11 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 		],
 		['pre-commit', [], []],
 		['pre-commit', null, ['install:check', 'typecheck', 'migrations:check']],
-		['pre-push', null, ['skills-lock:check', 'knip', 'test:push']],
+		[
+			'pre-push',
+			null,
+			['node tools/check-skills-lock.ts', 'knip', 'test:push'],
+		],
 	]
 	expect(
 		planCases.map(([hook, paths]) => [
@@ -163,14 +167,17 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 				throw new Error('blank pre-push stdin must fail closed before git')
 			},
 		}),
-	).toEqual({ code: 0, scripts: ['skills-lock:check', 'knip', 'test:push'] })
+	).toEqual({
+		code: 0,
+		scripts: ['node tools/check-skills-lock.ts', 'knip', 'test:push'],
+	})
 
 	expect(isSkillsLockHookPath('.agents/skills/ship-pr/SKILL.md')).toBe(true)
 	expect(isSkillsLockHookPath('./skills-lock.json')).toBe(true)
 	expect(isSkillsLockHookPath('README.md')).toBe(false)
 	expect(
 		plannedScripts('pre-push', ['.agents/skills/ship-pr/SKILL.md']),
-	).toEqual(['skills-lock:check'])
+	).toEqual(['node tools/check-skills-lock.ts'])
 	expect(
 		plannedScripts('pre-commit', ['.agents/skills/ship-pr/SKILL.md']),
 	).toEqual([])
@@ -179,39 +186,37 @@ test('docs-only hook paths skip expensive checks and any code path keeps them', 
 			hook: 'pre-push',
 			paths: ['.agents/skills/ship-pr/SKILL.md', 'README.md'],
 		}).summary,
-	).toBe(
-		'pre-push: running skills-lock:check (.agents/skills/ship-pr/SKILL.md)',
-	)
+	).toBe('pre-push: running skills-lock (.agents/skills/ship-pr/SKILL.md)')
 	expect(
 		plannedScripts('pre-push', [
 			'.agents/skills/ship-pr/SKILL.md',
 			'skills-lock.json',
 		]),
-	).toEqual(['skills-lock:check'])
+	).toEqual(['node tools/check-skills-lock.ts'])
 	expect(
 		plannedScripts('pre-push', [
 			'.agents/skills/visual-recap/scripts/primitives-map.mjs',
 		]),
-	).toEqual(['skills-lock:check', 'knip', 'test:push'])
+	).toEqual(['node tools/check-skills-lock.ts', 'knip', 'test:push'])
 	expect(
 		plannedScripts('pre-push', [
 			'.agents/skills/visual-recap/scripts/primitives-map.mjs',
 			'skills-lock.json',
 		]),
-	).toEqual(['skills-lock:check', 'knip', 'test:push'])
+	).toEqual(['node tools/check-skills-lock.ts', 'knip', 'test:push'])
 	expect(
 		plannedScripts('pre-push', [
 			'.agents/skills/ship-pr/SKILL.md',
 			'packages/worker/src/app.ts',
 		]),
-	).toEqual(['skills-lock:check', 'knip', 'test:push'])
+	).toEqual(['node tools/check-skills-lock.ts', 'knip', 'test:push'])
 	expect(
 		planGitHookChecks({
 			hook: 'pre-push',
 			paths: ['skills-lock.json', 'packages/worker/src/app.ts'],
 		}).summary,
 	).toBe(
-		'pre-push: running skills-lock:check, knip, and test:push (packages/worker/src/app.ts)',
+		'pre-push: running skills-lock, knip, and test:push (packages/worker/src/app.ts)',
 	)
 })
 

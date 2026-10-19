@@ -27,8 +27,9 @@ import {
  * including a comment in a source file, keeps the full check for that hook.
  * An unreadable diff fails closed and runs the check.
  *
- * pre-push also runs skills-lock:check when the push changes skills-lock.json
- * or a path under .agents/skills/, and when the pushed paths cannot be listed.
+ * pre-push also runs `node tools/check-skills-lock.ts` when the push changes
+ * skills-lock.json or a path under .agents/skills/, and when the pushed paths
+ * cannot be listed.
  * Markdown skill files are docs-only, so they do not run knip or test:push.
  * skills-lock.json alone does not either. Executable files under
  * .agents/skills/ still run knip and test:push.
@@ -130,7 +131,7 @@ export function hookScripts(plan: GitHookCheckPlan) {
 	if (plan.runInstallCheck) scripts.push('install:check')
 	if (plan.runTypecheck) scripts.push('typecheck')
 	if (plan.runMigrationsCheck) scripts.push('migrations:check')
-	if (plan.runSkillsLockCheck) scripts.push('skills-lock:check')
+	if (plan.runSkillsLockCheck) scripts.push('node tools/check-skills-lock.ts')
 	if (plan.runKnip) scripts.push('knip')
 	if (plan.runUnitTests) scripts.push('test:push')
 	return scripts
@@ -495,10 +496,11 @@ export async function runGitHookChecks(input: {
 
 	for (const script of scripts) {
 		const started = now()
-		log(`hook: starting npm run ${script}`)
+		const label = hookCommandLabel(script)
+		log(`hook: starting ${label}`)
 		const heartbeat = setInterval(() => {
 			const elapsedSec = Math.max(1, Math.round((now() - started) / 1000))
-			log(`hook: still running npm run ${script} (${elapsedSec}s)`)
+			log(`hook: still running ${label} (${elapsedSec}s)`)
 		}, progressIntervalMs)
 		// Unref so a stuck interval cannot keep the process alive after exit.
 		heartbeat.unref?.()
@@ -526,7 +528,7 @@ export async function runGitHookChecks(input: {
 			clearInterval(heartbeat)
 		}
 		const elapsedSec = Math.max(0, Math.round((now() - started) / 1000))
-		log(`hook: finished npm run ${script} in ${elapsedSec}s (exit ${status})`)
+		log(`hook: finished ${label} in ${elapsedSec}s (exit ${status})`)
 		if (status !== 0) {
 			if (script === 'knip') {
 				log(
@@ -612,7 +614,7 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 			runUnitTests: true,
 			runSkillsLockCheck: true,
 			summary:
-				'pre-push: running knip, test:push, and skills-lock:check (could not list pushed paths)',
+				'pre-push: running knip, test:push, and skills-lock (could not list pushed paths)',
 		}
 	}
 	const skillsLock = paths.some(isSkillsLockHookPath)
@@ -628,7 +630,7 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 				runKnip: false,
 				runUnitTests: false,
 				runSkillsLockCheck: true,
-				summary: `pre-push: running skills-lock:check (${skillsLockPathSummary(paths)})`,
+				summary: `pre-push: running skills-lock (${skillsLockPathSummary(paths)})`,
 			}
 		}
 		return {
@@ -649,7 +651,7 @@ function planPrePush(paths: ReadonlyArray<string> | null): GitHookCheckPlan {
 		runUnitTests: true,
 		runSkillsLockCheck: skillsLock,
 		summary: skillsLock
-			? `pre-push: running skills-lock:check, knip, and test:push (${codePathSummary(paths)})`
+			? `pre-push: running skills-lock, knip, and test:push (${codePathSummary(paths)})`
 			: `pre-push: running knip and test:push (${codePathSummary(paths)})`,
 	}
 }
@@ -808,13 +810,24 @@ export function gitHookScriptEnv(source: NodeJS.ProcessEnv = process.env) {
 	return env
 }
 
+/** Label for progress logs (`npm run X` or a bare `node …` command). */
+export function hookCommandLabel(script: string) {
+	return script.startsWith('node ') ? script : `npm run ${script}`
+}
+
 function defaultRunNpmScript(script: string, cwd?: string): Promise<number> {
 	return new Promise((resolve) => {
-		const child = spawn(resolveNpmCommand(), ['run', script], {
-			stdio: 'inherit',
-			env: gitHookScriptEnv(),
-			cwd,
-		})
+		const child = script.startsWith('node ')
+			? spawn(process.execPath, script.slice('node '.length).split(' '), {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+				})
+			: spawn(resolveNpmCommand(), ['run', script], {
+					stdio: 'inherit',
+					env: gitHookScriptEnv(),
+					cwd,
+				})
 		child.once('error', (error) => {
 			console.error(error.message)
 			resolve(1)

@@ -58,7 +58,7 @@ significant push.
 ## Failure
 
 - The mermaid check exits non-zero. Fix the diagram. Do not put `;` in sequence
-  notes or messages. `npm run mermaid:check` uses the same parser.
+  notes or messages. `npm run docs:check` (mermaid member) uses the same parser.
 - The block file must start with `<!-- system-recap:start -->` and end with
   `<!-- system-recap:end -->`.
 - `gh pr edit` fails with
