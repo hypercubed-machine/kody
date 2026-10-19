@@ -9,11 +9,12 @@ npm run control-kody -- browse --path /account
 npm run control-kody -- request GET /account/organizations --contains 'Organizations'
 ```
 
-Create a team org (form POST), then use `/@<slug>/-/…` workspace pages:
+Create a team org through the signed-in page (`browse`), then use `/@<slug>/-/…`
+workspace pages. For a verification fixture, use MCP `orgCreate` via `execute`
+(not a direct POST — the page calls a Start server function).
 
 ```bash
-npm run control-kody -- request POST /account/organizations/new \
-  --form slug=x-org --form displayName=X
+npm run control-kody -- browse --path /account/organizations/new
 ```
 
 ## Assert
