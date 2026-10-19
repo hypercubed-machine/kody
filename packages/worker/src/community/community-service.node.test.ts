@@ -460,6 +460,14 @@ test('community operations reject banned users', async () => {
 			actorUserId: 'user-1',
 		}),
 	).rejects.toThrow(/banned from community participation/)
+	// communityFork keys the fork by the bound org; the banned person
+	// acting for that org must still be rejected.
+	await expect(
+		fork({
+			userId: ownerIdFromStored('org-owner-1'),
+			creatorUserId: 'user-1',
+		}),
+	).rejects.toThrow(/banned from community participation/)
 	await expect(
 		unpublishCommunityListing({
 			env: createEnv(),

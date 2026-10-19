@@ -1358,8 +1358,12 @@ export async function prepareCommunityFork(
 	// Ban check, listing row, and pinned KV snapshot are independent reads —
 	// overlapping them shaves fork preflight latency before the Artifacts
 	// bootstrap (the dominant cost) begins.
-	const [, listing, snapshot] = await Promise.all([
+	const [, , listing, snapshot] = await Promise.all([
 		assertNotCommunityBanned(input.env.APP_DB, input.userId),
+		// Bans bind to the acting person, not just the owning org.
+		input.creatorUserId && input.creatorUserId !== input.userId
+			? assertNotCommunityBanned(input.env.APP_DB, input.creatorUserId)
+			: undefined,
 		getCommunityListingById(input.env.APP_DB, {
 			listingId: input.listingId,
 			includeDelisted: false,
