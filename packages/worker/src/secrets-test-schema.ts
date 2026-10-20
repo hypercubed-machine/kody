@@ -41,7 +41,26 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 				updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 				placement_json TEXT,
+				placement_origin TEXT,
 				PRIMARY KEY (bucket_id, name)
+			)`,
+		)
+		.run()
+	// Suites that created secret_entries before placement_origin: add the column.
+	try {
+		await db
+			.prepare(`ALTER TABLE secret_entries ADD COLUMN placement_origin TEXT`)
+			.run()
+	} catch {
+		// Column already present.
+	}
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS credential_fill_placement_observations (
+				credential_id TEXT PRIMARY KEY NOT NULL,
+				filled_last_seen_json TEXT NOT NULL,
+				would_block_last_seen_json TEXT NOT NULL,
+				updated_at TEXT NOT NULL
 			)`,
 		)
 		.run()
