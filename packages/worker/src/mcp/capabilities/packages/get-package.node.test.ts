@@ -299,6 +299,7 @@ test('getPackageCapability includes package-scoped secret metadata as FYI', asyn
 			expires_at: null,
 			ttl_ms: null,
 			placement: null,
+			placement_origin: null,
 			disconnected: false,
 		},
 	])
