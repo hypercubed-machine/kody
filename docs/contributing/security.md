@@ -141,6 +141,14 @@ package-app surfaces:
     context, so no `kody.*` capability may adopt: an unadopted fork would adopt
     itself. Package apps, jobs, webhooks, and other package runtimes cannot
     adopt or grant themselves secrets.
+16. **No private information in public spaces.** Never post private information
+    in issues, PRs, comments, commits, or public docs (handles, package names,
+    emails, secrets, internal IDs, private-repo or advisory detail). Reports use
+    counts or aggregates. Canonical rule:
+    [No private information in public spaces](../principles/no-private-info-in-public.md).
+    `@kentcdodds/github` blocks `@`-mentions by default (`allowedMentions` is
+    opt-in). Fleet progress helpers that apply the rule live in
+    `packages/worker/src/admin/github-safe-production-summary.ts`.
 
 ## First-party HTTP security headers
 

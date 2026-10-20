@@ -7,17 +7,12 @@ import {
 	runFleetPackageCodemodStep,
 } from '#mcp/capabilities/packages/package-codemod-shared.ts'
 import { credentialStampConvertCodemodId } from '#worker/credentials/credential-stamp-convert.ts'
-import { credentialStampMigrateHoldouts } from '#worker/credentials/credential-stamp-migrate-holdouts.ts'
 import {
 	adminMutationCapabilityAccess,
 	auditAdminCapabilityInvocation,
 } from './admin-shared.ts'
 
-const holdoutList = credentialStampMigrateHoldouts
-	.map((name) => `\`${name}\``)
-	.join(', ')
-
-const pagingHint = `One page per execute/sandbox. Resume with the returned runId and nextCursor until null. dryRun default is true (transform + publish checks only); set dryRun false to republish converted trees. Codemod ${credentialStampConvertCodemodId} skips Kent holdouts (${holdoutList}) and anything still unconvertible; it never emails or notifies package owners, never creates credential values, and preserves job/trigger enablements via the existing republish path. After apply pages complete, run adminCredentialStampBackfill dryRun→false to stamp seal-ready packages. ${packageCodemodHeavyPagingHint}`
+const pagingHint = `One page per execute/sandbox. Resume with the returned runId and nextCursor until null. dryRun default is true (transform + publish checks only); set dryRun false to republish converted trees. Codemod ${credentialStampConvertCodemodId} skips configured Kent holdouts (credentialStampMigrateHoldouts) and anything still unconvertible; it never emails or notifies package owners, never creates credential values, and preserves job/trigger enablements via the existing republish path. After apply pages complete, run adminCredentialStampBackfill dryRun→false to stamp seal-ready packages. Public progress: counts only (adminCredentialStampBackfill githubSafeSummary) — docs/principles/no-private-info-in-public.md. ${packageCodemodHeavyPagingHint}`
 
 const inputSchema = z.object({
 	dryRun: z

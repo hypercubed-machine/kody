@@ -13,6 +13,9 @@ import {
 	auditAdminCapabilityInvocation,
 } from './admin-shared.ts'
 
+const githubSafeProgressHint =
+	'Public spaces (issues/PRs/comments/commits/docs): never post private information — use githubSafeSummary counts only (e.g. remainingByOwner.summary). Keep named outcomes rows private. See docs/principles/no-private-info-in-public.md. Mentions: @kentcdodds/github blocks @-mentions by default (allowedMentions opt-in).'
+
 const pagingHint =
 	'One page per execute/sandbox. Resume with the returned nextCursor until null — a filtered scan can return empty outcomes with a non-null nextCursor after exhausting the underlying page budget, so keep paging until nextCursor is null. dryRun default is true (scan only); set dryRun false to restamp seal-ready packages at the current published commit with no content change. Packages that need safe conversion first: run adminCredentialStampMigrate (codemod 0015-convert-credential-stamps) dryRun→apply, then this backfill. Packages that only need descriptions: adminPackageCodemodApply with codemodId 0014-seal-credential-stamps. Packages still reported unconvertible stay on the publish gate (long-term); do not email owners. Packages reported deferred_scan_budget hit the known Durable Object CPU blowup on large prebuilt client assets (e.g. world-builder public/client/main.js) — retry after the publish-seal CPU fix is live; do not treat them as unconvertible.'
 
@@ -164,11 +167,47 @@ const outputSchema = z.object({
 		.describe(
 			'Resume cursor (saved_packages.id). May be non-null even when outcomes is empty if filters skipped a full underlying scan budget; keep paging until null.',
 		),
-	outcomes: z.array(outcomeSchema),
+	outcomes: z
+		.array(outcomeSchema)
+		.describe(
+			'Per-package rows for private operator use (targeting by packageId). Do not paste named rows into public spaces.',
+		),
 	unconvertibleFailureCodes: z
 		.array(gateFailureCodeSchema)
 		.describe(
 			'Distinct blocking stamp-gate failure codes seen on unconvertible packages this page (issue #3836 phase 2 stop-and-notify input).',
+		),
+	githubSafeSummary: z
+		.object({
+			dryRun: z.boolean(),
+			scannedPackages: z.number().int().nonnegative(),
+			publishedPackages: z.number().int().nonnegative(),
+			stampedPackages: z.number().int().nonnegative(),
+			missingStampPackages: z.number().int().nonnegative(),
+			needsManifestPackages: z.number().int().nonnegative(),
+			unconvertiblePackages: z.number().int().nonnegative(),
+			deferredScanBudgetPackages: z.number().int().nonnegative(),
+			restampedPackages: z.number().int().nonnegative(),
+			failedPackages: z.number().int().nonnegative(),
+			skippedUnpublished: z.number().int().nonnegative(),
+			unconvertibleFailureCodes: z.array(gateFailureCodeSchema),
+			remainingByOwner: z
+				.object({
+					ownerCount: z.number().int().nonnegative(),
+					packageCount: z.number().int().nonnegative(),
+					topOwnerPackageCount: z.number().int().nonnegative(),
+					summary: z
+						.string()
+						.describe(
+							'Counts-only line for public progress, e.g. "3 owners, top owner has 2 packages". Never includes handles or package names.',
+						),
+				})
+				.describe(
+					'Remaining (not stamped) owner concentration as counts only — use for public progress; never list owners or packages by name.',
+				),
+		})
+		.describe(
+			'Counts-only rollup for public progress (no private info in public spaces). Prefer this over outcomes when posting to issues/PRs/comments.',
 		),
 })
 
@@ -178,7 +217,7 @@ export const adminCredentialStampBackfillCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminCredentialStampBackfill',
-		description: `Fleet scan/apply for published packages missing a complete credential stamp at the current published commit (issue #3836 phase 2). Reports stamped, would_restamp, needs_manifest (run codemod 0014-seal-credential-stamps), and unconvertible (agent convert then notify Kent). Apply restamps seal-ready packages only (no content change). ${pagingHint}`,
+		description: `Fleet scan/apply for published packages missing a complete credential stamp at the current published commit (issue #3836 phase 2). Reports stamped, would_restamp, needs_manifest (run codemod 0014-seal-credential-stamps), and unconvertible (agent convert then notify Kent). Apply restamps seal-ready packages only (no content change). ${githubSafeProgressHint} ${pagingHint}`,
 		keywords: [
 			'admin',
 			'credential',

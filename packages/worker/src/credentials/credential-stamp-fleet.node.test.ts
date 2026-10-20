@@ -201,6 +201,13 @@ test('credential stamp fleet dry-run classifies stamped, needs_manifest, and unc
 		expect(unconvertible.blockingFailures.length).toBeGreaterThan(0)
 		expect(unconvertible.blockingFailures[0]?.code).toBe('non_literal')
 	}
+	expect(result.githubSafeSummary.remainingByOwner).toEqual({
+		ownerCount: 1,
+		packageCount: 2,
+		topOwnerPackageCount: 2,
+		summary: '1 owner, top owner has 2 packages',
+	})
+	expect(result.githubSafeSummary.remainingByOwner.summary).not.toMatch(/@acme/)
 	expect(storeStamp).not.toHaveBeenCalled()
 })
 

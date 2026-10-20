@@ -547,6 +547,11 @@ removed when one full dry-run (`nextCursor` null) reports every one of those
 counters, plus `missingStampPackages`, as zero. Only `stamped` and
 `skipped_unpublished` remain.
 
+Public progress for this fleet is one application of
+[no private information in public spaces](../principles/no-private-info-in-public.md):
+use `githubSafeSummary` (counts and `remainingByOwner.summary`) — not named
+`outcomes` rows.
+
 ### `0015-convert-credential-stamps`
 
 Platform migration for
@@ -570,8 +575,8 @@ codemod still does not rewrite those placeholders itself.
 
 Skips without writing when:
 
-- The package is a Kent holdout (`@kentcdodds/raycast`,
-  `@kentcdodds/oauth-integration-health`).
+- The package is a configured Kent holdout
+  (`credential-stamp-migrate-holdouts.ts`).
 - Blocking stamp-gate failures remain (computed names, any `|scope=`,
   `packageSecrets.get`, vault placeholders, `server_eval`, `credential.named`,
   …). Manifest-only `kody.secretMounts` does not block.

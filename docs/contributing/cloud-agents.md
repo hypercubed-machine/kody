@@ -182,7 +182,10 @@ review-thread replies.
 
 Write those with `kody:@kentcdodds/github/request` (kody-bot) or Cursor
 `ManagePullRequest` `post_comment` / `in_reply_to`. See
-[ship-pr](../../.agents/skills/ship-pr/SKILL.md).
+[ship-pr](../../.agents/skills/ship-pr/SKILL.md). Never post private information
+in public spaces — [principle](../principles/no-private-info-in-public.md).
+Mentions: `@kentcdodds/github` blocks `@`-mentions by default; opt in with
+`allowedMentions` only when you intend to ping someone.
 
 ## GitHub token expiry mid-run
 

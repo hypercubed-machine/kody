@@ -32,6 +32,11 @@ import {
 	type CredentialStampGateFailure,
 } from './credential-stamp.ts'
 import {
+	formatOwnerConcentrationForGitHub,
+	summarizeOwnerConcentrationForGitHub,
+	type GithubSafeOwnerConcentration,
+} from '#worker/admin/github-safe-production-summary.ts'
+import {
 	resolvePublishedCredentialDepStamps,
 	storePublishedCredentialStamp,
 } from './credential-stamp-store.ts'
@@ -155,6 +160,71 @@ export type CredentialStampFleetResult = {
 	outcomes: Array<CredentialStampFleetOutcome>
 	/** Blocking failure codes seen on unconvertible packages this page. */
 	unconvertibleFailureCodes: Array<CredentialStampGateFailure['code']>
+	/**
+	 * Counts-only rollup for public progress (no private info in public
+	 * spaces). Prefer this over `outcomes` when posting to issues/PRs/comments.
+	 */
+	githubSafeSummary: CredentialStampFleetGithubSafeSummary
+}
+
+/** Outcomes that still need work (not yet stamped / clean). */
+const remainingFleetOutcomes = new Set<CredentialStampFleetOutcome['outcome']>([
+	'would_restamp',
+	'needs_manifest',
+	'unconvertible',
+	'deferred_scan_budget',
+	'failed',
+])
+
+export type CredentialStampFleetGithubSafeSummary = {
+	dryRun: boolean
+	scannedPackages: number
+	publishedPackages: number
+	stampedPackages: number
+	missingStampPackages: number
+	needsManifestPackages: number
+	unconvertiblePackages: number
+	deferredScanBudgetPackages: number
+	restampedPackages: number
+	failedPackages: number
+	skippedUnpublished: number
+	unconvertibleFailureCodes: Array<CredentialStampGateFailure['code']>
+	/**
+	 * Remaining (not stamped) packages: owner concentration as counts only
+	 * (application of no-private-info-in-public).
+	 */
+	remainingByOwner: GithubSafeOwnerConcentration & { summary: string }
+}
+
+export function buildCredentialStampFleetGithubSafeSummary(
+	result: Omit<CredentialStampFleetResult, 'githubSafeSummary' | 'outcomes'> & {
+		outcomes: ReadonlyArray<
+			Pick<CredentialStampFleetOutcome, 'outcome' | 'packageName'>
+		>
+	},
+): CredentialStampFleetGithubSafeSummary {
+	const remainingNames = result.outcomes
+		.filter((row) => remainingFleetOutcomes.has(row.outcome))
+		.map((row) => row.packageName)
+	const remainingByOwner = summarizeOwnerConcentrationForGitHub(remainingNames)
+	return {
+		dryRun: result.dryRun,
+		scannedPackages: result.scannedPackages,
+		publishedPackages: result.publishedPackages,
+		stampedPackages: result.stampedPackages,
+		missingStampPackages: result.missingStampPackages,
+		needsManifestPackages: result.needsManifestPackages,
+		unconvertiblePackages: result.unconvertiblePackages,
+		deferredScanBudgetPackages: result.deferredScanBudgetPackages,
+		restampedPackages: result.restampedPackages,
+		failedPackages: result.failedPackages,
+		skippedUnpublished: result.skippedUnpublished,
+		unconvertibleFailureCodes: result.unconvertibleFailureCodes,
+		remainingByOwner: {
+			...remainingByOwner,
+			summary: formatOwnerConcentrationForGitHub(remainingByOwner),
+		},
+	}
 }
 
 /**
@@ -537,7 +607,8 @@ export async function runCredentialStampFleet(input: {
 		}
 	}
 
-	return {
+	const unconvertibleFailureCodesSorted = [...unconvertibleFailureCodes].sort()
+	const page = {
 		dryRun,
 		scannedPackages: packages.length,
 		publishedPackages,
@@ -551,6 +622,10 @@ export async function runCredentialStampFleet(input: {
 		skippedUnpublished,
 		nextCursor,
 		outcomes,
-		unconvertibleFailureCodes: [...unconvertibleFailureCodes].sort(),
+		unconvertibleFailureCodes: unconvertibleFailureCodesSorted,
+	}
+	return {
+		...page,
+		githubSafeSummary: buildCredentialStampFleetGithubSafeSummary(page),
 	}
 }

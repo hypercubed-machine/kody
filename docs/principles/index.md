@@ -16,6 +16,7 @@ only the page the task needs.
 | [Two-way and one-way doors](./two-way-doors.md)                             | Deciding how much review a change needs                                                                   |
 | [Examples over prose](./examples-over-prose.md)                             | Writing docs, skills, or a multi-step procedure                                                           |
 | [Keep agent context lean](./lean-agent-context.md)                          | Editing `AGENTS.md`, agent skills, or deciding where guidance belongs                                     |
+| [No private information in public spaces](./no-private-info-in-public.md)   | Posting to issues, PRs, comments, commits, or public docs; fleet/admin progress reports                   |
 | [No invasive test-only code in production](./no-invasive-test-only-code.md) | Adding test seams, `*ForTests` exports, `NODE_ENV`/`VITEST` branches, or fixtures that would live in prod |
 | [Test the workflow](./test-the-workflow.md)                                 | Adding or reshaping tests                                                                                 |
 
