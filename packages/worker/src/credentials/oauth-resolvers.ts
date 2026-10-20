@@ -159,12 +159,15 @@ export const integrationTokenResolver: CredentialResolver<'integration-token'> =
 								packageStamp: call.input.packageStamp,
 								credential,
 								placement,
+								credentialId: lookup.credentialId,
 							})
 							observeFillPlacementWouldBlockSites({
 								credentialName: credential.name,
 								placement,
 								sites: credential.fillSites,
 								surface: 'placeholder',
+								env: call.input.env,
+								credentialId: lookup.credentialId,
 							})
 						} catch (error) {
 							console.warn('credential-fill-placement-observe-failed', {

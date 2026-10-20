@@ -329,23 +329,39 @@ export async function updateCredentialFields(input: {
 	const placementTable =
 		placementFieldTables[credential.kind as keyof typeof placementFieldTables]
 	const setsPlacement = placementTable !== undefined && touchesPlacement
-	const sql = setsPlacement
-		? `UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?, placement_json = ?
+	/** Only secret_entries stores placement_origin (owner edit marker). */
+	const setsSecretPlacementOrigin =
+		setsPlacement && credential.kind === 'secret'
+	const sql = setsSecretPlacementOrigin
+		? `UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?, placement_json = ?, placement_origin = ?
 			WHERE id = ? AND deleted_at IS NULL`
-		: `UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?
+		: setsPlacement
+			? `UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?, placement_json = ?
 			WHERE id = ? AND deleted_at IS NULL`
-	const statement = setsPlacement
+			: `UPDATE ${fieldTables[credential.kind]} SET provider = ?, inject_json = ?
+			WHERE id = ? AND deleted_at IS NULL`
+	const statement = setsSecretPlacementOrigin
 		? input.db
 				.prepare(sql)
 				.bind(
 					provider,
 					JSON.stringify(inject),
 					serializeCredentialFillPlacement(placement),
+					'owner',
 					credential.id,
 				)
-		: input.db
-				.prepare(sql)
-				.bind(provider, JSON.stringify(inject), credential.id)
+		: setsPlacement
+			? input.db
+					.prepare(sql)
+					.bind(
+						provider,
+						JSON.stringify(inject),
+						serializeCredentialFillPlacement(placement),
+						credential.id,
+					)
+			: input.db
+					.prepare(sql)
+					.bind(provider, JSON.stringify(inject), credential.id)
 	const details: Record<string, unknown> = {
 		credentialKind: credential.kind,
 	}

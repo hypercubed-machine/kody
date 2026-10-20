@@ -62,7 +62,10 @@ import {
 	type ResolveCredentialInput,
 	type ResolvedCredential,
 } from './credential-resolver.ts'
-import { readFetchFillPlacement } from './fetch-fill-placement-cache.ts'
+import {
+	readFetchFillPlacement,
+	readFetchFillPlacementCredentialId,
+} from './fetch-fill-placement-cache.ts'
 import {
 	type CredentialFillSite,
 	observeFillPlacementWouldBlockSites,
@@ -482,6 +485,10 @@ export function auditResolvedFetchPlacements(
 				placement: fillPlacement,
 				sites,
 				surface: 'placeholder',
+				env: input.env,
+				credentialId:
+					readFetchFillPlacementCredentialId(input) ??
+					cached.subject.credentialId,
 			})
 		}
 	}

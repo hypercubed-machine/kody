@@ -15,9 +15,11 @@ import { formatFillPlacementSummary } from '#universal/credential-fill-placement
 import {
 	type CredentialInjectView,
 	type CredentialListItem,
+	type CredentialPlacementOriginView,
 } from '#universal/credential-contracts.ts'
 import {
 	type AccountCredentialDetail,
+	type CredentialFillPlacementObservationView,
 	type CredentialNeedFit,
 	credentialKindLabel,
 	credentialStatusLabel,
@@ -115,6 +117,58 @@ function showsFillPlacement(kind: CredentialListItem['kind']) {
 			return exhaustive
 		}
 	}
+}
+
+function placementOriginNote(
+	origin: CredentialPlacementOriginView | null,
+): string | null {
+	switch (origin) {
+		case 'default_unread':
+			return 'The package declaration could not be read when this credential was created, so it kept the headers-only default. Reconnecting (secretSet with a value) will re-apply the package placement when the declaration can be read and this placement is still the untouched default. An owner edit or a placement preserved through Disconnect is kept.'
+		case 'default_undeclared':
+			return 'The package has no declared placement for this credential, so it uses the headers-only default.'
+		case 'manifest':
+			return 'Placement came from the package’s published kody.credentials declaration.'
+		case 'owner':
+			return 'Placement was set from this page.'
+		case 'explicit':
+			return 'Placement was set explicitly when the credential was written.'
+		case null:
+			return null
+		default: {
+			const exhaustive: never = origin
+			return exhaustive
+		}
+	}
+}
+
+function formatObservationParts(
+	parts: CredentialFillPlacementObservationView['wouldBlockLastSeen'],
+): string | null {
+	const labels = (['headers', 'query', 'path', 'body'] as const).filter(
+		(part) => parts[part],
+	)
+	return labels.length > 0 ? labels.join(', ') : null
+}
+
+function renderFillPlacementObservation(
+	observation: CredentialFillPlacementObservationView | null,
+) {
+	if (!observation) return null
+	const wouldBlock = formatObservationParts(observation.wouldBlockLastSeen)
+	const filled = formatObservationParts(observation.filledLastSeen)
+	if (!wouldBlock && !filled) return null
+	return (
+		<div css={{ display: 'grid', gap: spacing.xs }}>
+			{wouldBlock ? (
+				<p css={mutedCss}>
+					Kody would block placeholders in: {wouldBlock}. Placement is not
+					enforced yet; this is observe-only from recent fills.
+				</p>
+			) : null}
+			{filled ? <p css={mutedCss}>Recently filled parts: {filled}.</p> : null}
+		</div>
+	)
 }
 function hostsHint(credential: CredentialListItem) {
 	if (credential.hosts.length > 0) return null
@@ -331,11 +385,12 @@ export function renderCredentialDetail(input: {
 											Package-scope secrets are editable here. A published
 											package may also declare placement on the matching{' '}
 											<code css={codeCss}>kody.credentials</code> need. That
-											declaration applies only when inserting a new
-											package-scope secret. Disconnect keeps this row and its
-											placement; reconnect fills the same record. Delete removes
-											the credential; a later Connect is a new insert. Updating
-											an existing secret keeps its stored placement.
+											declaration applies when inserting a new package-scope
+											secret, and when reconnecting a row that still holds the
+											untouched headers-only default. Disconnect keeps this row
+											and its placement; an owner edit or a preserved placement
+											wins over the package default. Delete removes the
+											credential; a later Connect is a new insert.
 										</p>
 									) : null}
 								</>
@@ -349,6 +404,14 @@ export function renderCredentialDetail(input: {
 										org that owns the credential.
 									</p>
 								</>
+							)}
+							{placementOriginNote(credential.placementOrigin) ? (
+								<p css={mutedCss}>
+									{placementOriginNote(credential.placementOrigin)}
+								</p>
+							) : null}
+							{renderFillPlacementObservation(
+								detail?.fillPlacementObservation ?? null,
 							)}
 							{detail?.placeholder ? (
 								<p css={mutedCss}>

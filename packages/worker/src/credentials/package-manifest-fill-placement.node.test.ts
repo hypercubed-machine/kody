@@ -26,9 +26,9 @@ test('readDeclaredPackageSecretFillPlacement returns declared body placement', a
 		manifest: {
 			kody: {
 				credentials: {
-					'audible-refresh-token': {
+					'refresh-token': {
 						kind: 'secret',
-						description: 'Refresh token for Amazon /auth/token.',
+						description: 'Refresh token for auth/token.',
 						placement: { body: true },
 					},
 				},
@@ -42,12 +42,12 @@ test('readDeclaredPackageSecretFillPlacement returns declared body placement', a
 			userId: 'user-1' as never,
 			baseUrl: 'https://kody.example',
 			packageId: 'pkg-1',
-			secretName: 'audible-refresh-token',
+			secretName: 'refresh-token',
 		}),
-	).resolves.toEqual({ body: true })
+	).resolves.toEqual({ status: 'applied', placement: { body: true } })
 })
 
-test('readDeclaredPackageSecretFillPlacement returns undefined when undeclared', async () => {
+test('readDeclaredPackageSecretFillPlacement returns undeclared when no placement', async () => {
 	getSavedPackageByIdMock.mockResolvedValueOnce({
 		id: 'pkg-1',
 		sourceId: 'src-1',
@@ -56,9 +56,9 @@ test('readDeclaredPackageSecretFillPlacement returns undefined when undeclared',
 		manifest: {
 			kody: {
 				credentials: {
-					'audible-refresh-token': {
+					'refresh-token': {
 						kind: 'secret',
-						description: 'Refresh token for Amazon /auth/token.',
+						description: 'Refresh token for auth/token.',
 					},
 				},
 			},
@@ -71,12 +71,12 @@ test('readDeclaredPackageSecretFillPlacement returns undefined when undeclared',
 			userId: 'user-1' as never,
 			baseUrl: 'https://kody.example',
 			packageId: 'pkg-1',
-			secretName: 'audible-refresh-token',
+			secretName: 'refresh-token',
 		}),
-	).resolves.toBeUndefined()
+	).resolves.toEqual({ status: 'undeclared' })
 })
 
-test('readDeclaredPackageSecretFillPlacement swallows load failures', async () => {
+test('readDeclaredPackageSecretFillPlacement returns unread on load failure', async () => {
 	getSavedPackageByIdMock.mockRejectedValueOnce(new Error('db down'))
 	await expect(
 		readDeclaredPackageSecretFillPlacement({
@@ -84,7 +84,23 @@ test('readDeclaredPackageSecretFillPlacement swallows load failures', async () =
 			userId: 'user-1' as never,
 			baseUrl: 'https://kody.example',
 			packageId: 'pkg-1',
-			secretName: 'audible-refresh-token',
+			secretName: 'refresh-token',
 		}),
-	).resolves.toBeUndefined()
+	).resolves.toEqual({ status: 'unread', reason: 'manifest_load_failed' })
+})
+
+test('readDeclaredPackageSecretFillPlacement returns unread when source is missing', async () => {
+	getSavedPackageByIdMock.mockResolvedValueOnce({
+		id: 'pkg-1',
+		sourceId: null,
+	} as unknown as Awaited<ReturnType<typeof getSavedPackageById>>)
+	await expect(
+		readDeclaredPackageSecretFillPlacement({
+			env: { APP_DB: {} } as Env,
+			userId: 'user-1' as never,
+			baseUrl: 'https://kody.example',
+			packageId: 'pkg-1',
+			secretName: 'refresh-token',
+		}),
+	).resolves.toEqual({ status: 'unread', reason: 'package_source_missing' })
 })

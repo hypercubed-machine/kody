@@ -47,6 +47,7 @@ function item(
 		hosts: [],
 		inject: null,
 		placement: null,
+		placementOrigin: null,
 		packageId: null,
 		lockedToPackageIds: [],
 		expiresAt: null,

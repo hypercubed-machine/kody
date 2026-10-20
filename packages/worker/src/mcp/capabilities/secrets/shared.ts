@@ -3,6 +3,7 @@ import {
 	credentialFillPlacementSchema,
 	credentialInjectSchema,
 } from '#worker/credentials/credential-fields.ts'
+import { credentialPlacementOrigins } from '#worker/credentials/placement-origin.ts'
 import {
 	type ListedSecret,
 	type SecretMetadata,
@@ -31,6 +32,12 @@ export const secretMetadataSchema = z.object({
 		.describe(
 			'Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. The gateway does not enforce this yet.',
 		),
+	placement_origin: z
+		.enum(credentialPlacementOrigins)
+		.nullable()
+		.describe(
+			'How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. The gateway does not enforce placement yet.',
+		),
 	disconnected: z
 		.boolean()
 		.describe(
@@ -51,6 +58,7 @@ export function toSecretCapabilityOutput(secret: SecretMetadata) {
 		expires_at: secret.expiresAt,
 		ttl_ms: secret.ttlMs,
 		placement: secret.placement,
+		placement_origin: secret.placementOrigin ?? null,
 		disconnected: secret.disconnected,
 	}
 }

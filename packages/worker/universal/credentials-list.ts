@@ -83,6 +83,15 @@ export type CredentialNeedFit =
 	/** Same kind with no provider; it can be mapped, or given a provider. */
 	| 'possible'
 
+/** Last-seen timestamps for observe-mode fill placement parts. Never values. */
+export type CredentialFillPlacementObservationView = {
+	filledLastSeen: Partial<Record<'headers' | 'query' | 'path' | 'body', string>>
+	wouldBlockLastSeen: Partial<
+		Record<'headers' | 'query' | 'path' | 'body', string>
+	>
+	updatedAt: string
+}
+
 /** What the detail pane adds to a list row. Never a value. */
 export type AccountCredentialDetail = {
 	id: string
@@ -107,6 +116,12 @@ export type AccountCredentialDetail = {
 	 * to another org.
 	 */
 	hostSettings: CredentialHostSettings | null
+	/**
+	 * Observe-mode fill records for this credential (parts filled vs parts
+	 * that would be blocked). Null when none recorded yet. Display only;
+	 * placement is not enforced yet.
+	 */
+	fillPlacementObservation: CredentialFillPlacementObservationView | null
 }
 
 /** Where a Key or an OAuth connection may be sent. */

@@ -182,6 +182,17 @@ export type CredentialListItemStatus =
 	/** Secret value cleared; row and placement kept. Reconnect to restore. */
 	| 'disconnected'
 
+/**
+ * How fill placement was chosen for a secret credential. Null on legacy rows
+ * or non-secret kinds. See worker `CredentialPlacementOrigin`.
+ */
+export type CredentialPlacementOriginView =
+	| 'manifest'
+	| 'default_unread'
+	| 'default_undeclared'
+	| 'owner'
+	| 'explicit'
+
 export type CredentialListItem = {
 	id: string
 	kind: CredentialKind
@@ -193,6 +204,12 @@ export type CredentialListItem = {
 	inject: CredentialInjectView | null
 	/** Null means anywhere. MCP servers always null (no placeholder fill). */
 	placement: CredentialFillPlacementView | null
+	/**
+	 * How fill placement was chosen. Null on legacy rows and non-secret kinds.
+	 * `default_unread` means the package declaration could not be read at
+	 * insert; a later secretSet may repair an untouched headers-only default.
+	 */
+	placementOrigin: CredentialPlacementOriginView | null
 	packageId: string | null
 	lockedToPackageIds: Array<string>
 	expiresAt: string | null

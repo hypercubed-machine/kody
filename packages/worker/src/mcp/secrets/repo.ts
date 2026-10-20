@@ -10,6 +10,10 @@ import {
 	serializeCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
 import {
+	isCredentialPlacementOrigin,
+	type CredentialPlacementOrigin,
+} from '#worker/credentials/placement-origin.ts'
+import {
 	disconnectedSecretEncryptedValue,
 	isDisconnectedSecretEncryptedValue,
 } from '#mcp/secrets/disconnected.ts'
@@ -30,7 +34,7 @@ const newCredentialPlacementJson = serializeCredentialFillPlacement(
 const listPackageScopeSecretFixedBindings = 2
 
 const secretEntryColumns =
-	'id, bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages, expires_at, created_at, updated_at, placement_json'
+	'id, bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages, expires_at, created_at, updated_at, placement_json, placement_origin'
 
 type SecretMetadataRow = {
 	id: string
@@ -45,6 +49,7 @@ type SecretMetadataRow = {
 	expires_at: string | null
 	/** Null means anywhere. */
 	placement_json: string | null
+	placement_origin: CredentialPlacementOrigin | null
 	/** True when Disconnect cleared the value; row and placement remain. */
 	disconnected: boolean
 }
@@ -53,6 +58,7 @@ type SecretEntryLookup = SecretEntryRow & {
 	kind: StoredCredentialKind
 	/** Null means anywhere. */
 	placement_json: string | null
+	placement_origin: CredentialPlacementOrigin | null
 }
 
 /**
@@ -221,6 +227,7 @@ function mapSecretEntryLookup(
 		kind: readStoredCredentialKind(row['kind']),
 		placement_json:
 			row['placement_json'] == null ? null : String(row['placement_json']),
+		placement_origin: readPlacementOrigin(row['placement_origin']),
 	}
 }
 
@@ -376,14 +383,16 @@ function prepareUpsertSecretEntryStatement(input: {
 	 * headers-only default for brand-new Keys.
 	 */
 	newCredentialPlacementJson: string | null
+	/** Set only on insert with placement; conflict leaves existing origin. */
+	newCredentialPlacementOrigin?: CredentialPlacementOrigin | null
 }): D1PreparedStatement {
 	const now = new Date().toISOString()
 	return input.db
 		.prepare(
 			`INSERT INTO secret_entries (
 				bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages,
-				expires_at, created_at, updated_at, placement_json
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				expires_at, created_at, updated_at, placement_json, placement_origin
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(bucket_id, name)
 			DO UPDATE SET
 				description = excluded.description,
@@ -404,6 +413,7 @@ function prepareUpsertSecretEntryStatement(input: {
 			input.row.created_at ?? now,
 			input.row.updated_at ?? now,
 			input.newCredentialPlacementJson,
+			input.newCredentialPlacementOrigin ?? null,
 		)
 }
 
@@ -435,8 +445,8 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 			`INSERT INTO secret_entries (
 				id, bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages,
 				expires_at, created_at, updated_at, kind, config_json, provider, inject_json,
-				placement_json
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				placement_json, placement_origin
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(bucket_id, name)
 			DO UPDATE SET
 				description = excluded.description,
@@ -449,7 +459,8 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 				config_json = excluded.config_json,
 				provider = excluded.provider,
 				inject_json = excluded.inject_json,
-				placement_json = excluded.placement_json`,
+				placement_json = excluded.placement_json,
+				placement_origin = excluded.placement_origin`,
 		)
 		.bind(
 			input.credential.id,
@@ -467,6 +478,7 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 			input.credential.provider,
 			input.credential.inject_json,
 			input.credential.placement_json,
+			'explicit',
 		)
 }
 
@@ -482,6 +494,7 @@ export async function upsertSecretEntry(input: {
 	 * existing row into a new bucket (scope / package move).
 	 */
 	placementOnInsert?: CredentialFillPlacement | null
+	placementOriginOnInsert?: CredentialPlacementOrigin | null
 }): Promise<void> {
 	await prepareUpsertSecretEntryStatement({
 		db: input.db,
@@ -490,6 +503,12 @@ export async function upsertSecretEntry(input: {
 			'placementOnInsert' in input
 				? serializeCredentialFillPlacement(input.placementOnInsert ?? null)
 				: newCredentialPlacementJson,
+		newCredentialPlacementOrigin:
+			'placementOriginOnInsert' in input
+				? (input.placementOriginOnInsert ?? null)
+				: 'placementOnInsert' in input
+					? null
+					: 'default_undeclared',
 	}).run()
 }
 
@@ -509,13 +528,14 @@ export async function upsertSecretEntriesAtomically(input: {
 			 * headers-only default. Explicit `null` preserves anywhere.
 			 */
 			placementOnInsert?: CredentialFillPlacement | null
+			placementOriginOnInsert?: CredentialPlacementOrigin | null
 		}
 	>
 }): Promise<void> {
 	if (input.rows.length === 0) return
 	await input.db.batch(
 		input.rows.map((row) => {
-			const { placementOnInsert, ...entry } = row
+			const { placementOnInsert, placementOriginOnInsert, ...entry } = row
 			return prepareUpsertSecretEntryStatement({
 				db: input.db,
 				row: entry,
@@ -523,6 +543,12 @@ export async function upsertSecretEntriesAtomically(input: {
 					placementOnInsert !== undefined
 						? serializeCredentialFillPlacement(placementOnInsert ?? null)
 						: newCredentialPlacementJson,
+				newCredentialPlacementOrigin:
+					placementOriginOnInsert !== undefined
+						? placementOriginOnInsert
+						: placementOnInsert !== undefined
+							? null
+							: 'default_undeclared',
 			})
 		}),
 	)
@@ -760,7 +786,7 @@ export async function listSecretMetadataForBucket(input: {
 }): Promise<Array<SecretMetadataRow>> {
 	const { results } = await input.db
 		.prepare(
-			`SELECT id, ? AS scope, ? AS binding_key, name, description, allowed_hosts, allowed_packages, created_at, updated_at, expires_at AS entry_expires_at, ? AS bucket_expires_at, placement_json, encrypted_value
+			`SELECT id, ? AS scope, ? AS binding_key, name, description, allowed_hosts, allowed_packages, created_at, updated_at, expires_at AS entry_expires_at, ? AS bucket_expires_at, placement_json, placement_origin, encrypted_value
 			FROM secret_entries
 			WHERE bucket_id = ?${andLiveDeletedAtSql()}
 			ORDER BY name ASC`,
@@ -783,7 +809,7 @@ export async function listUserScopeSecretMetadata(input: {
 	const now = input.now ?? new Date().toISOString()
 	const { results } = await input.db
 		.prepare(
-			`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json, e.encrypted_value AS encrypted_value
+			`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json, e.placement_origin AS placement_origin, e.encrypted_value AS encrypted_value
 			FROM secret_buckets b
 			JOIN secret_entries e ON e.bucket_id = b.id
 			WHERE b.user_id = ? AND b.scope = 'user'
@@ -857,7 +883,7 @@ export async function listPackageScopeSecretMetadata(input: {
 		const placeholders = idChunk.map(() => '?').join(', ')
 		const { results } = await input.db
 			.prepare(
-				`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json, e.encrypted_value AS encrypted_value
+				`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json, e.placement_origin AS placement_origin, e.encrypted_value AS encrypted_value
 				FROM secret_buckets b
 				JOIN secret_entries e ON e.bucket_id = b.id
 				WHERE b.user_id = ? AND b.scope = 'package'
@@ -884,6 +910,10 @@ function mapSecretBucketRow(row: Record<string, unknown>): SecretBucketRow {
 		created_at: String(row['created_at']),
 		updated_at: String(row['updated_at']),
 	}
+}
+
+function readPlacementOrigin(value: unknown): CredentialPlacementOrigin | null {
+	return isCredentialPlacementOrigin(value) ? value : null
 }
 
 function mapSecretEntryRow(row: Record<string, unknown>): SecretEntryRow {
@@ -925,6 +955,7 @@ function mapSecretMetadataRow(row: Record<string, unknown>): SecretMetadataRow {
 		expires_at: earliestSecretExpiresAt(entryExpiresAt, bucketExpiresAt),
 		placement_json:
 			row['placement_json'] == null ? null : String(row['placement_json']),
+		placement_origin: readPlacementOrigin(row['placement_origin']),
 		disconnected: isDisconnectedSecretEncryptedValue(encryptedValue),
 	}
 }

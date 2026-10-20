@@ -55,7 +55,7 @@ import {
 	serializeCredentialFillPlacement,
 	type CredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
-import { readDeclaredPackageSecretFillPlacement } from '#worker/credentials/package-manifest-fill-placement.ts'
+import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
 import { type LoginExchange } from '#worker/credentials/login-resolver.ts'
 import {
 	persistIntegrationTokens,
@@ -1566,10 +1566,13 @@ export async function saveAccountSecret(input: {
 	// Scope/package moves insert under a new bucket. Preserve the source
 	// placement (including null = anywhere) so headers-only default does not
 	// narrow an existing credential. An explicit form placement wins. For a
-	// new package-scope secret, the package manifest may declare placement.
+	// new package-scope secret without form placement, saveSecret reads the
+	// package declaration (and marks unread when the manifest cannot be read).
 	let placementOnInsert: CredentialFillPlacement | null | undefined
+	let placementOriginOnInsert: CredentialPlacementOrigin | null | undefined
 	if (requestedPlacement !== undefined && credential == null) {
 		placementOnInsert = requestedPlacement
+		placementOriginOnInsert = 'owner'
 	} else if (currentSecret && !samePlacement && credential == null) {
 		const source = await findSecret({
 			env: input.env,
@@ -1583,23 +1586,10 @@ export async function saveAccountSecret(input: {
 			// Moves must preserve placement even when the source is expired.
 			includeExpired: true,
 		})
-		if (source.found) placementOnInsert = source.placement
-	} else if (
-		scope === 'package' &&
-		packageId &&
-		!currentSecret &&
-		credential == null
-	) {
-		placementOnInsert = await readDeclaredPackageSecretFillPlacement({
-			env: input.env,
-			userId: ownerIdFromCaller({
-				request: input.user.request,
-				user: input.user.mcpUser,
-			}),
-			baseUrl: new URL(input.request.url).origin,
-			packageId,
-			secretName: name,
-		})
+		if (source.found) {
+			placementOnInsert = source.placement
+			placementOriginOnInsert = source.placementOrigin
+		}
 	}
 
 	let saved: Awaited<ReturnType<typeof saveSecret>>
@@ -1620,8 +1610,14 @@ export async function saveAccountSecret(input: {
 				scope,
 				packageId,
 			}),
+			baseUrl: new URL(input.request.url).origin,
 			...(credential ? { credential } : {}),
-			...(placementOnInsert !== undefined ? { placementOnInsert } : {}),
+			...(placementOnInsert !== undefined
+				? {
+						placementOnInsert,
+						placementOriginOnInsert: placementOriginOnInsert ?? null,
+					}
+				: {}),
 		})
 		if (
 			requestedPlacement !== undefined &&

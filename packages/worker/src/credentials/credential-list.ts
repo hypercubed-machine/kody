@@ -25,6 +25,7 @@ import {
 	type CredentialKind,
 	type CredentialListFilters,
 	type CredentialListItem,
+	type CredentialPlacementOriginView,
 	type CredentialScope,
 	isCredentialKind,
 } from '#universal/credential-contracts.ts'
@@ -33,7 +34,14 @@ import {
 	readCredentialFillPlacement,
 	readCredentialInject,
 } from './credential-fields.ts'
+import { isCredentialPlacementOrigin } from './placement-origin.ts'
 import { listPersonalCredentialCandidates } from './personal-credentials.ts'
+
+function readPlacementOriginView(
+	value: string | null | undefined,
+): CredentialPlacementOriginView | null {
+	return isCredentialPlacementOrigin(value) ? value : null
+}
 
 type Family = 'secret' | 'integration'
 
@@ -101,6 +109,7 @@ type SecretRow = {
 	allowed_packages: string
 	inject_json: string | null
 	placement_json: string | null
+	placement_origin: string | null
 	bucket_scope: string
 	binding_key: string
 	created_at: string
@@ -120,7 +129,8 @@ async function loadSecretRows(input: {
 		const result = await input.db
 			.prepare(
 				`SELECT e.id, e.name, e.kind, e.provider, e.description, e.allowed_hosts,
-					e.allowed_packages, e.inject_json, e.placement_json, b.scope AS bucket_scope,
+					e.allowed_packages, e.inject_json, e.placement_json, e.placement_origin,
+					b.scope AS bucket_scope,
 					b.binding_key, e.created_at, e.updated_at, e.expires_at,
 					b.expires_at AS bucket_expires_at, e.encrypted_value
 				FROM secret_entries e JOIN secret_buckets b ON b.id = e.bucket_id
@@ -168,6 +178,7 @@ async function loadSecretRows(input: {
 						? readCredentialInject(row.inject_json)
 						: null,
 				placement: readCredentialFillPlacement(row.placement_json),
+				placementOrigin: readPlacementOriginView(row.placement_origin),
 				packageId: row.bucket_scope === 'package' ? row.binding_key : null,
 				lockedToPackageIds: parseStringArray(row.allowed_packages),
 				expiresAt,
@@ -247,6 +258,7 @@ async function loadIntegrationRows(input: {
 			}),
 			inject: bearerInject,
 			placement: readCredentialFillPlacement(row.placement_json),
+			placementOrigin: null,
 			packageId: null,
 			lockedToPackageIds:
 				row.usage_mode === 'packages'
@@ -304,6 +316,7 @@ async function loadMcpRows(input: {
 			hosts: hostOf(row.url),
 			inject: null,
 			placement: null,
+			placementOrigin: null,
 			packageId: null,
 			lockedToPackageIds:
 				row.usage_mode === 'packages'

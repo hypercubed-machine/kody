@@ -69,9 +69,16 @@ import {
 	type OrgAuditOutboxEvent,
 	type OrgAuditWriter,
 	runAppDbBatchWithOrgAudit,
+	logOrgAuditEvent,
 } from '#worker/orgs/org-audit.ts'
-import { readDeclaredPackageSecretFillPlacement } from '#worker/credentials/package-manifest-fill-placement.ts'
+import {
+	isUntouchedDefaultPlacement,
+	resolvePackageSecretPlacement,
+} from '#worker/credentials/resolve-package-secret-placement.ts'
+import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
 import { isDisconnectedSecretEncryptedValue } from '#mcp/secrets/disconnected.ts'
+import { updateSecretEntryPlacement } from '#mcp/secrets/update-secret-placement.ts'
+import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { stampFirstSecret } from '#worker/identity/activation-stamps.ts'
 
@@ -99,6 +106,13 @@ type SaveSecretInput = SecretOwnerContext & {
 	 * a scope/package move copies an existing credential into a new bucket.
 	 */
 	placementOnInsert?: CredentialFillPlacement | null
+	/** How the insert placement was chosen; stored on the row for repair/UI. */
+	placementOriginOnInsert?: CredentialPlacementOrigin | null
+	/**
+	 * When set with a package-scope value write, may re-apply the package's
+	 * declared placement onto an untouched headers-only default.
+	 */
+	baseUrl?: string
 }
 
 /**
@@ -158,6 +172,8 @@ export type ResolvedSecret = {
 	allowedPackages: Array<string>
 	/** Null means anywhere (placeholders may fill any request part). */
 	placement: CredentialFillPlacement | null
+	/** How fill placement was chosen; null/omitted on legacy rows or when not found. */
+	placementOrigin?: CredentialPlacementOrigin | null
 }
 
 /**
@@ -280,6 +296,8 @@ export async function saveSecret(
 		created_at: existingEntry?.created_at ?? now,
 		updated_at: now,
 	}
+	let placementAfter: CredentialFillPlacement | null
+	let placementOriginAfter: CredentialPlacementOrigin | null
 	if (credential) {
 		const credentialId = existingEntry?.id ?? crypto.randomUUID()
 		await runAppDbBatchWithOrgAudit({
@@ -301,14 +319,91 @@ export async function saveSecret(
 			],
 			event: credential.audit.event(credentialId),
 		})
+		placementAfter = readCredentialFillPlacement(credential.placementJson)
+		placementOriginAfter = 'explicit'
 	} else {
+		let placementOnInsert = input.placementOnInsert
+		let placementOriginOnInsert = input.placementOriginOnInsert
+		if (
+			existingEntry == null &&
+			input.scope === 'package' &&
+			!('placementOnInsert' in input) &&
+			input.baseUrl
+		) {
+			const resolved = await resolvePackageSecretPlacement({
+				env: input.env as Env,
+				userId: input.userId,
+				baseUrl: input.baseUrl,
+				packageId: bucket.binding_key,
+				secretName: name,
+			})
+			placementOnInsert = resolved.placement
+			placementOriginOnInsert = resolved.origin
+			if (resolved.declarationStatus === 'unread') {
+				await auditPlacementDeclarationUnread({
+					env: input.env,
+					userId: input.userId,
+					packageId: bucket.binding_key,
+					secretName: name,
+					reason: resolved.unreadReason ?? 'unread',
+				})
+			}
+		}
 		await upsertSecretEntry({
 			db: input.env.APP_DB,
 			row,
-			...('placementOnInsert' in input
-				? { placementOnInsert: input.placementOnInsert ?? null }
+			...('placementOnInsert' in input || placementOnInsert !== undefined
+				? {
+						placementOnInsert: placementOnInsert ?? null,
+						placementOriginOnInsert: placementOriginOnInsert ?? null,
+					}
 				: {}),
 		})
+		placementAfter =
+			existingEntry != null
+				? readCredentialFillPlacement(existingEntry.placement_json)
+				: (placementOnInsert ?? defaultNewCredentialFillPlacement)
+		placementOriginAfter =
+			existingEntry != null
+				? (existingEntry.placement_origin ?? null)
+				: (placementOriginOnInsert ?? null)
+
+		if (
+			existingEntry != null &&
+			input.scope === 'package' &&
+			input.baseUrl &&
+			isUntouchedDefaultPlacement(
+				placementAfter,
+				existingEntry.placement_origin ?? null,
+			)
+		) {
+			const resolved = await resolvePackageSecretPlacement({
+				env: input.env as Env,
+				userId: input.userId,
+				baseUrl: input.baseUrl,
+				packageId: bucket.binding_key,
+				secretName: name,
+			})
+			if (resolved.declarationStatus === 'applied') {
+				await updateSecretEntryPlacement({
+					db: input.env.APP_DB,
+					bucketId: bucket.id,
+					name,
+					placement: resolved.placement,
+					origin: 'manifest',
+					updatedAt: now,
+				})
+				placementAfter = resolved.placement
+				placementOriginAfter = 'manifest'
+				await auditPlacementDeclarationRepaired({
+					env: input.env,
+					userId: input.userId,
+					packageId: bucket.binding_key,
+					secretName: name,
+					credentialId: existingEntry.id,
+				})
+			}
+		}
 	}
 	if (
 		previousPlaintext !== null &&
@@ -332,13 +427,6 @@ export async function saveSecret(
 			input.env,
 		)
 	}
-	const placementAfter = credential
-		? readCredentialFillPlacement(credential.placementJson)
-		: existingEntry != null
-			? readCredentialFillPlacement(existingEntry.placement_json)
-			: 'placementOnInsert' in input
-				? (input.placementOnInsert ?? null)
-				: defaultNewCredentialFillPlacement
 	return toSecretMetadata({
 		name,
 		scope: input.scope,
@@ -352,6 +440,53 @@ export async function saveSecret(
 		updatedAt: now,
 		expiresAt: earliestSecretExpiresAt(entryExpiresAt, bucket.expires_at),
 		placement: placementAfter,
+		placementOrigin: placementOriginAfter,
+	})
+}
+
+async function auditPlacementDeclarationUnread(input: {
+	env: Pick<Env, 'APP_DB'> & Partial<Pick<Env, 'AUDIT_DB'>>
+	userId: OwnerId
+	packageId: string
+	secretName: string
+	reason: string
+}) {
+	const auditDb = auditDatabaseFromEnv(input.env)
+	if (!auditDb) return
+	await logOrgAuditEvent({
+		db: auditDb,
+		orgId: input.userId,
+		action: 'credential.placement_declaration_unread',
+		result: 'success',
+		resourceType: 'secret',
+		details: {
+			packageId: input.packageId,
+			name: input.secretName,
+			reason: input.reason,
+		},
+	})
+}
+
+async function auditPlacementDeclarationRepaired(input: {
+	env: Pick<Env, 'APP_DB'> & Partial<Pick<Env, 'AUDIT_DB'>>
+	userId: OwnerId
+	packageId: string
+	secretName: string
+	credentialId: string
+}) {
+	const auditDb = auditDatabaseFromEnv(input.env)
+	if (!auditDb) return
+	await logOrgAuditEvent({
+		db: auditDb,
+		orgId: input.userId,
+		action: 'credential.placement_declaration_repaired',
+		result: 'success',
+		resourceType: 'secret',
+		resourceId: input.credentialId,
+		details: {
+			packageId: input.packageId,
+			name: input.secretName,
+		},
 	})
 }
 
@@ -632,6 +767,7 @@ export async function updateUserSecretsForPackageAtomically(input: {
 			placement: readCredentialFillPlacement(
 				entry.existingEntry.placement_json,
 			),
+			placementOrigin: entry.existingEntry.placement_origin ?? null,
 		}),
 	)
 }
@@ -666,6 +802,9 @@ async function saveSecretsAtomically(input: {
 		expiresAt: string | null
 		existingEntry: Awaited<ReturnType<typeof getSecretEntry>>
 		placementOnInsert?: CredentialFillPlacement | null
+		placementOriginOnInsert?: CredentialPlacementOrigin | null
+		placementAfter?: CredentialFillPlacement | null
+		placementOriginAfter?: CredentialPlacementOrigin | null
 	}> = []
 	let newSecretCount = 0
 	let requestedStorageBytes = 0
@@ -721,16 +860,26 @@ async function saveSecretsAtomically(input: {
 				: null,
 		})
 		let placementOnInsert: CredentialFillPlacement | undefined
+		let placementOriginOnInsert: CredentialPlacementOrigin | undefined
 		if (existingEntry == null && packageIdForPlacement && input.baseUrl) {
-			placementOnInsert = await readDeclaredPackageSecretFillPlacement({
-				// Manifest load needs Artifacts bindings; failures fall back to
-				// the headers-only default inside the helper.
+			const resolved = await resolvePackageSecretPlacement({
 				env: input.env as Env,
 				userId: input.userId,
 				baseUrl: input.baseUrl,
 				packageId: packageIdForPlacement,
 				secretName: name,
 			})
+			placementOnInsert = resolved.placement
+			placementOriginOnInsert = resolved.origin
+			if (resolved.declarationStatus === 'unread') {
+				await auditPlacementDeclarationUnread({
+					env: input.env,
+					userId: input.userId,
+					packageId: packageIdForPlacement,
+					secretName: name,
+					reason: resolved.unreadReason ?? 'unread',
+				})
+			}
 		}
 		prepared.push({
 			name,
@@ -741,7 +890,12 @@ async function saveSecretsAtomically(input: {
 				requested: secret.expiresAt,
 			}),
 			existingEntry,
-			...(placementOnInsert !== undefined ? { placementOnInsert } : {}),
+			...(placementOnInsert !== undefined
+				? {
+						placementOnInsert,
+						placementOriginOnInsert,
+					}
+				: {}),
 		})
 	}
 
@@ -775,10 +929,70 @@ async function saveSecretsAtomically(input: {
 			created_at: entry.existingEntry?.created_at ?? now,
 			updated_at: now,
 			...(entry.placementOnInsert !== undefined
-				? { placementOnInsert: entry.placementOnInsert }
+				? {
+						placementOnInsert: entry.placementOnInsert,
+						placementOriginOnInsert: entry.placementOriginOnInsert ?? null,
+					}
 				: {}),
 		})),
 	})
+	if (packageIdForPlacement && input.baseUrl) {
+		for (const entry of prepared) {
+			if (!entry.existingEntry) {
+				entry.placementAfter =
+					entry.placementOnInsert ?? defaultNewCredentialFillPlacement
+				entry.placementOriginAfter = entry.placementOriginOnInsert ?? null
+				continue
+			}
+			const currentPlacement = readCredentialFillPlacement(
+				entry.existingEntry.placement_json,
+			)
+			const currentOrigin = entry.existingEntry.placement_origin ?? null
+			if (!isUntouchedDefaultPlacement(currentPlacement, currentOrigin)) {
+				entry.placementAfter = currentPlacement
+				entry.placementOriginAfter = currentOrigin
+				continue
+			}
+			const resolved = await resolvePackageSecretPlacement({
+				env: input.env as Env,
+				userId: input.userId,
+				baseUrl: input.baseUrl,
+				packageId: packageIdForPlacement,
+				secretName: entry.name,
+			})
+			if (resolved.declarationStatus === 'applied') {
+				await updateSecretEntryPlacement({
+					db: input.env.APP_DB,
+					bucketId: bucket.id,
+					name: entry.name,
+					placement: resolved.placement,
+					origin: 'manifest',
+					updatedAt: now,
+				})
+				entry.placementAfter = resolved.placement
+				entry.placementOriginAfter = 'manifest'
+				await auditPlacementDeclarationRepaired({
+					env: input.env,
+					userId: input.userId,
+					packageId: packageIdForPlacement,
+					secretName: entry.name,
+					credentialId: entry.existingEntry.id,
+				})
+			} else {
+				entry.placementAfter = currentPlacement
+				entry.placementOriginAfter = currentOrigin
+			}
+		}
+	} else {
+		for (const entry of prepared) {
+			entry.placementAfter = entry.existingEntry
+				? readCredentialFillPlacement(entry.existingEntry.placement_json)
+				: (entry.placementOnInsert ?? defaultNewCredentialFillPlacement)
+			entry.placementOriginAfter = entry.existingEntry
+				? (entry.existingEntry.placement_origin ?? null)
+				: (entry.placementOriginOnInsert ?? null)
+		}
+	}
 	if (input.scope === 'user' || input.scope === 'package') {
 		for (const entry of prepared) {
 			if (!entry.existingEntry) continue
@@ -832,9 +1046,16 @@ async function saveSecretsAtomically(input: {
 			createdAt: entry.existingEntry?.created_at ?? now,
 			updatedAt: now,
 			expiresAt: earliestSecretExpiresAt(entry.expiresAt, bucket.expires_at),
-			placement: entry.existingEntry
-				? readCredentialFillPlacement(entry.existingEntry.placement_json)
-				: (entry.placementOnInsert ?? defaultNewCredentialFillPlacement),
+			placement:
+				entry.placementAfter ??
+				(entry.existingEntry
+					? readCredentialFillPlacement(entry.existingEntry.placement_json)
+					: (entry.placementOnInsert ?? defaultNewCredentialFillPlacement)),
+			placementOrigin:
+				entry.placementOriginAfter ??
+				(entry.existingEntry
+					? (entry.existingEntry.placement_origin ?? null)
+					: (entry.placementOriginOnInsert ?? null)),
 		}),
 	)
 }
@@ -872,6 +1093,7 @@ export async function listSecrets(
 				updatedAt: row.updated_at,
 				expiresAt: row.expires_at,
 				placement: readCredentialFillPlacement(row.placement_json),
+				placementOrigin: row.placement_origin ?? null,
 				disconnected: row.disconnected,
 			}),
 		}))
@@ -933,6 +1155,7 @@ export async function findSecret(
 			allowedHosts: [],
 			allowedPackages: [],
 			placement: null,
+			placementOrigin: null,
 		}
 	}
 	return {
@@ -942,6 +1165,7 @@ export async function findSecret(
 		allowedHosts: parseAllowedHosts(found.entry.allowed_hosts),
 		allowedPackages: parseAllowedPackages(found.entry.allowed_packages),
 		placement: readCredentialFillPlacement(found.entry.placement_json),
+		placementOrigin: found.entry.placement_origin ?? null,
 	}
 }
 
@@ -969,6 +1193,7 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 			allowedHosts: [],
 			allowedPackages: [],
 			placement: null,
+			placementOrigin: null,
 		}
 		const { value: _value, ...metadata } = missing
 		return { found: metadata, readValue: async () => missing }
@@ -980,6 +1205,7 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 		allowedHosts: parseAllowedHosts(found.entry.allowed_hosts),
 		allowedPackages: parseAllowedPackages(found.entry.allowed_packages),
 		placement: readCredentialFillPlacement(found.entry.placement_json),
+		placementOrigin: found.entry.placement_origin ?? null,
 	}
 	return {
 		found: metadata,
@@ -1077,6 +1303,7 @@ export async function resolveSecret(
 			placement: found
 				? readCredentialFillPlacement(found.entry.placement_json)
 				: null,
+			placementOrigin: found ? (found.entry.placement_origin ?? null) : null,
 		}
 	}
 	return {
@@ -1091,6 +1318,7 @@ export async function resolveSecret(
 		allowedHosts: parseAllowedHosts(found.entry.allowed_hosts),
 		allowedPackages: parseAllowedPackages(found.entry.allowed_packages),
 		placement: readCredentialFillPlacement(found.entry.placement_json),
+		placementOrigin: found.entry.placement_origin ?? null,
 	}
 }
 
@@ -1194,6 +1422,7 @@ export async function renameSecret(input: {
 				bucket.expires_at,
 			),
 			placement: readCredentialFillPlacement(existing.placement_json),
+			placementOrigin: existing.placement_origin ?? null,
 		})
 	}
 	const taken = await getSecretEntry({
@@ -1234,6 +1463,7 @@ export async function renameSecret(input: {
 		updatedAt: updated.updated_at,
 		expiresAt: earliestSecretExpiresAt(updated.expires_at, bucket.expires_at),
 		placement: readCredentialFillPlacement(updated.placement_json),
+		placementOrigin: updated.placement_origin ?? null,
 	})
 }
 
@@ -1269,6 +1499,7 @@ export async function readSecretMetadata(
 		updatedAt: entry.updated_at,
 		expiresAt: earliestSecretExpiresAt(entry.expires_at, bucket.expires_at),
 		placement: readCredentialFillPlacement(entry.placement_json),
+		placementOrigin: entry.placement_origin ?? null,
 		disconnected: isDisconnectedSecretEncryptedValue(entry.encrypted_value),
 	})
 }
@@ -1381,6 +1612,7 @@ export async function updateSecret(
 		updatedAt: now,
 		expiresAt: earliestSecretExpiresAt(entryExpiresAt, bucket.expires_at),
 		placement: readCredentialFillPlacement(existingEntry.placement_json),
+		placementOrigin: existingEntry.placement_origin ?? null,
 	})
 }
 
@@ -1431,6 +1663,7 @@ export async function listPackageSecretsByPackageIds(input: {
 				updatedAt: row.updated_at,
 				expiresAt: row.expires_at,
 				placement: readCredentialFillPlacement(row.placement_json),
+				placementOrigin: row.placement_origin ?? null,
 				disconnected: row.disconnected,
 			}),
 		)
@@ -1571,6 +1804,7 @@ function toSecretMetadata(input: {
 	updatedAt: string
 	expiresAt: string | null
 	placement?: CredentialFillPlacement | null
+	placementOrigin?: CredentialPlacementOrigin | null
 	disconnected?: boolean
 }): SecretMetadata {
 	return {
@@ -1585,6 +1819,8 @@ function toSecretMetadata(input: {
 		expiresAt: input.expiresAt,
 		ttlMs: secretTtlMs(input.expiresAt),
 		placement: input.placement === undefined ? null : input.placement,
+		placementOrigin:
+			input.placementOrigin === undefined ? null : input.placementOrigin,
 		disconnected: input.disconnected === true,
 	}
 }
@@ -1642,6 +1878,7 @@ export async function setSecretAllowedHosts(input: {
 			bucket.expires_at,
 		),
 		placement: readCredentialFillPlacement(existingEntry.placement_json),
+		placementOrigin: existingEntry.placement_origin ?? null,
 	})
 }
 
@@ -1701,6 +1938,7 @@ export async function setSecretAllowedPackages(input: {
 			bucket.expires_at,
 		),
 		placement: readCredentialFillPlacement(existingEntry.placement_json),
+		placementOrigin: existingEntry.placement_origin ?? null,
 	})
 }
 
@@ -1768,6 +2006,7 @@ export async function inspectUserSecretPackageGrant(input: {
 				bucket.expires_at,
 			),
 			placement: readCredentialFillPlacement(existingEntry.placement_json),
+			placementOrigin: existingEntry.placement_origin ?? null,
 		}),
 		savedPackage: {
 			id: savedPackage.id,

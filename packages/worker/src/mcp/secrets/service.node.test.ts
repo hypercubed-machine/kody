@@ -1,6 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { isEntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { planLimits } from '#universal/plans.ts'
@@ -27,6 +27,7 @@ import {
 } from './service.ts'
 import { createUnresolvedSecretMessage } from './unresolved-secret.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import * as packageManifestPlacement from '#worker/credentials/package-manifest-fill-placement.ts'
 
 const migrationsDirectory = new URL('../../../migrations/', import.meta.url)
 const userId = ownerIdFromStored('user-123')
@@ -117,6 +118,7 @@ test('resolveSecret returns the first scope hit in precedence order and ignores 
 		allowedHosts: [],
 		allowedPackages: [],
 		placement: { headers: true },
+		placementOrigin: expect.anything(),
 	}
 	await expect(
 		resolveSecret({ env, userId, name, storageContext }),
@@ -694,4 +696,88 @@ test('disconnect clears the value; reconnect preserves placement over a later de
 			],
 		]),
 	)
+})
+
+test('package insert marks unread defaults; later secretSet repairs untouched defaults only', async () => {
+	const { env, sqlite } = await createSecretEnv()
+	const packageContext = ctx('pkg-unread')
+	const readSpy = vi
+		.spyOn(packageManifestPlacement, 'readDeclaredPackageSecretFillPlacement')
+		.mockResolvedValueOnce({
+			status: 'unread',
+			reason: 'manifest_load_failed',
+		})
+
+	const inserted = await saveSecret({
+		env,
+		userId,
+		scope: 'package',
+		name: 'refreshToken',
+		value: 'first',
+		storageContext: packageContext,
+		baseUrl: 'https://kody.example',
+	})
+	expect(inserted).toMatchObject({
+		placement: { headers: true },
+		placementOrigin: 'default_unread',
+	})
+	await expect(
+		listSecrets({
+			env,
+			userId,
+			scope: 'package',
+			storageContext: packageContext,
+		}),
+	).resolves.toEqual([
+		expect.objectContaining({
+			name: 'refreshToken',
+			placement: { headers: true },
+			placementOrigin: 'default_unread',
+		}),
+	])
+
+	readSpy.mockResolvedValueOnce({
+		status: 'applied',
+		placement: { body: true },
+	})
+	const repaired = await saveSecret({
+		env,
+		userId,
+		scope: 'package',
+		name: 'refreshToken',
+		value: 'second',
+		storageContext: packageContext,
+		baseUrl: 'https://kody.example',
+	})
+	expect(repaired).toMatchObject({
+		placement: { body: true },
+		placementOrigin: 'manifest',
+	})
+
+	sqlite
+		.prepare(
+			`UPDATE secret_entries
+			 SET placement_json = ?, placement_origin = 'owner'
+			 WHERE name = 'refreshToken'`,
+		)
+		.run(JSON.stringify({ headers: true }))
+	readSpy.mockResolvedValueOnce({
+		status: 'applied',
+		placement: { body: true },
+	})
+	const ownerWins = await saveSecret({
+		env,
+		userId,
+		scope: 'package',
+		name: 'refreshToken',
+		value: 'third',
+		storageContext: packageContext,
+		baseUrl: 'https://kody.example',
+	})
+	expect(ownerWins).toMatchObject({
+		placement: { headers: true },
+		placementOrigin: 'owner',
+	})
+
+	readSpy.mockRestore()
 })

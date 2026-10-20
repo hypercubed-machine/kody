@@ -1,6 +1,6 @@
 /**
- * Observe mode: fills still succeed, but would-block is logged when a
- * placeholder site is outside the credential's stored placement.
+ * Observe mode: fills still succeed, but durable would-block records are
+ * scheduled when a placeholder site is outside the credential's stored placement.
  */
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
@@ -9,6 +9,17 @@ import * as secretService from '#mcp/secrets/service.ts'
 import * as credentialResolver from '#worker/credentials/credential-resolver.ts'
 import * as orgsRepo from '#worker/orgs/repo.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
+import * as observations from '#worker/credentials/fill-placement-observations.ts'
+
+vi.mock('cloudflare:workers', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('cloudflare:workers')>()
+	return {
+		...actual,
+		waitUntil: (promise: Promise<unknown>) => {
+			void promise
+		},
+	}
+})
 
 const env = {
 	APP_DB: {
@@ -51,6 +62,7 @@ function mockSecret(placement: secretService.ResolvedSecret['placement']) {
 		allowedHosts: ['api.example.com'],
 		allowedPackages: [],
 		placement,
+		placementOrigin: null,
 	}
 	const { value: _value, ...found } = secret
 	return {
@@ -68,8 +80,10 @@ function mockSecret(placement: secretService.ResolvedSecret['placement']) {
 	}
 }
 
-test('headers-only placement still fills body but logs would-block', async () => {
-	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+test('headers-only placement still fills body but records would-block', async () => {
+	const schedule = vi
+		.spyOn(observations, 'scheduleFillPlacementObservation')
+		.mockImplementation(() => {})
 	const { findSpy, authSpy, orgSpy } = mockSecret({ headers: true })
 	try {
 		const { request: expanded, bodyFillDone } = await expandSecretPlaceholders({
@@ -91,21 +105,22 @@ test('headers-only placement still fills body but logs would-block', async () =>
 			})
 		}
 		await bodyFillDone
-		expect(info).toHaveBeenCalledWith(
-			'credential-fill-placement-would-block',
+		expect(schedule).toHaveBeenCalledWith(
 			expect.objectContaining({
-				credentialName: 'apiKey',
-				part: 'body',
-				allowedParts: ['headers'],
-				surface: 'placeholder',
+				credentialId: 'cred-apiKey',
+				filledParts: ['headers'],
+				wouldBlockParts: [],
 			}),
 		)
-		expect(info).not.toHaveBeenCalledWith(
-			'credential-fill-placement-would-block',
-			expect.objectContaining({ part: expect.stringContaining('header') }),
+		expect(schedule).toHaveBeenCalledWith(
+			expect.objectContaining({
+				credentialId: 'cred-apiKey',
+				filledParts: [],
+				wouldBlockParts: ['body'],
+			}),
 		)
 	} finally {
-		info.mockRestore()
+		schedule.mockRestore()
 		findSpy.mockRestore()
 		authSpy.mockRestore()
 		orgSpy.mockRestore()
@@ -113,7 +128,9 @@ test('headers-only placement still fills body but logs would-block', async () =>
 })
 
 test('path and query fills are observed as distinct sites', async () => {
-	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+	const schedule = vi
+		.spyOn(observations, 'scheduleFillPlacementObservation')
+		.mockImplementation(() => {})
 	const { findSpy, authSpy, orgSpy } = mockSecret({ headers: true })
 	try {
 		const { request: expanded, bodyFillDone } = await expandSecretPlaceholders({
@@ -130,24 +147,28 @@ test('path and query fills are observed as distinct sites', async () => {
 		expect(new URL(expanded.url).pathname).toContain('sk_live')
 		expect(new URL(expanded.url).searchParams.get('q')).toBe('sk_live')
 		await bodyFillDone
-		expect(info).toHaveBeenCalledWith(
-			'credential-fill-placement-would-block',
-			expect.objectContaining({ part: 'path' }),
+		expect(schedule).toHaveBeenCalledWith(
+			expect.objectContaining({
+				wouldBlockParts: ['path'],
+			}),
 		)
-		expect(info).toHaveBeenCalledWith(
-			'credential-fill-placement-would-block',
-			expect.objectContaining({ part: 'query' }),
+		expect(schedule).toHaveBeenCalledWith(
+			expect.objectContaining({
+				wouldBlockParts: ['query'],
+			}),
 		)
 	} finally {
-		info.mockRestore()
+		schedule.mockRestore()
 		findSpy.mockRestore()
 		authSpy.mockRestore()
 		orgSpy.mockRestore()
 	}
 })
 
-test('null placement (anywhere) does not log would-block', async () => {
-	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+test('null placement (anywhere) does not record would-block', async () => {
+	const schedule = vi
+		.spyOn(observations, 'scheduleFillPlacementObservation')
+		.mockImplementation(() => {})
 	const { findSpy, authSpy, orgSpy } = mockSecret(null)
 	try {
 		const { request: expanded, bodyFillDone } = await expandSecretPlaceholders({
@@ -165,12 +186,25 @@ test('null placement (anywhere) does not log would-block', async () => {
 		expect(expanded.headers.get('Authorization')).toBe('Bearer sk_live')
 		expect(await expanded.text()).toBe('token=sk_live')
 		await bodyFillDone
-		expect(info).not.toHaveBeenCalledWith(
-			'credential-fill-placement-would-block',
-			expect.anything(),
+		expect(schedule).toHaveBeenCalledWith(
+			expect.objectContaining({
+				filledParts: ['headers'],
+				wouldBlockParts: [],
+			}),
+		)
+		expect(schedule).toHaveBeenCalledWith(
+			expect.objectContaining({
+				filledParts: ['body'],
+				wouldBlockParts: [],
+			}),
+		)
+		expect(schedule).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				wouldBlockParts: expect.arrayContaining(['body']),
+			}),
 		)
 	} finally {
-		info.mockRestore()
+		schedule.mockRestore()
 		findSpy.mockRestore()
 		authSpy.mockRestore()
 		orgSpy.mockRestore()

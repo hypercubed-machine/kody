@@ -17,6 +17,7 @@ import {
 } from './credential-candidates.ts'
 import { readCredentialHostSettings } from './credential-hosts.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
+import { readFillPlacementObservation } from './fill-placement-observations.ts'
 
 /** Each package costs a closure read, so usage checks the most recent ones. */
 export const maxUsagePackages = 40
@@ -195,25 +196,29 @@ export async function loadCredentialDetail(input: {
 	const checked = input.credential.packageId
 		? reachable.filter((pkg) => pkg.id === input.credential.packageId)
 		: reachable.slice(0, maxUsagePackages)
-	const [grants, usage, hostSettings] = await Promise.all([
-		input.ownedByViewer
-			? listGrants(input.env.APP_DB, input.credential.id)
-			: [],
-		checked.length > 0
-			? listUsage({
-					env: input.env,
-					request: input.request,
-					orgId: input.orgId,
-					credentialId: input.credential.id,
-					packages: checked,
-				})
-			: { usage: [], unreadable: 0 },
-		readEditableHostSettings({
-			db: input.env.APP_DB,
-			orgId: input.orgId,
-			credential: input.credential,
-		}),
-	])
+	const [grants, usage, hostSettings, fillPlacementObservation] =
+		await Promise.all([
+			input.ownedByViewer
+				? listGrants(input.env.APP_DB, input.credential.id)
+				: [],
+			checked.length > 0
+				? listUsage({
+						env: input.env,
+						request: input.request,
+						orgId: input.orgId,
+						credentialId: input.credential.id,
+						packages: checked,
+					})
+				: { usage: [], unreadable: 0 },
+			readEditableHostSettings({
+				db: input.env.APP_DB,
+				orgId: input.orgId,
+				credential: input.credential,
+			}),
+			showsFillPlacementObservation(input.credential.kind)
+				? readFillPlacementObservation(input.env.APP_DB, input.credential.id)
+				: null,
+		])
 	return {
 		id: input.credential.id,
 		placeholder: credentialPlaceholder(input.credential),
@@ -223,5 +228,25 @@ export async function loadCredentialDetail(input: {
 			!input.credential.packageId && reachable.length > checked.length,
 		usageUnreadable: usage.unreadable,
 		hostSettings,
+		fillPlacementObservation,
+	}
+}
+
+function showsFillPlacementObservation(
+	kind: CredentialListItem['kind'],
+): boolean {
+	switch (kind) {
+		case 'secret':
+		case 'oauth':
+		case 'url':
+		case 'login':
+		case 'signing':
+			return true
+		case 'mcp':
+			return false
+		default: {
+			const exhaustive: never = kind
+			return exhaustive
+		}
 	}
 }

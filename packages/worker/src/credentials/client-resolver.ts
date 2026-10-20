@@ -169,6 +169,8 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 					placement: found.placement,
 					site: fillSiteFromCredentialInject(inject),
 					surface: 'credential-client',
+					env: call.input.env,
+					credentialId: credential.credentialId,
 				})
 			},
 			async apply() {

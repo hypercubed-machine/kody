@@ -162,37 +162,58 @@ test('inject maps to fill sites; refusal message names credential and parts', ()
 	).toBe('Credential "apiKey" may not fill body. Allowed parts: headers.')
 })
 
-test('observe logs would-block without throwing and skips allowed sites', () => {
-	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+test('observe schedules durable records without throwing and skips allowed sites', async () => {
+	const observations = await import('./fill-placement-observations.ts')
+	const schedule = vi
+		.spyOn(observations, 'scheduleFillPlacementObservation')
+		.mockImplementation(() => {})
+	const env = { APP_DB: {} } as Pick<Env, 'APP_DB'>
 	try {
 		observeFillPlacementWouldBlock({
 			credentialName: 'apiKey',
 			placement: defaultNewCredentialFillPlacement,
 			site: { part: 'header', name: 'Authorization' },
 			surface: 'placeholder',
+			env,
+			credentialId: 'cred-1',
 		})
-		expect(info).not.toHaveBeenCalled()
+		expect(schedule).toHaveBeenCalledWith({
+			env,
+			credentialId: 'cred-1',
+			filledParts: ['headers'],
+			wouldBlockParts: [],
+		})
+		schedule.mockClear()
 		observeFillPlacementWouldBlockSites({
 			credentialName: 'apiKey',
 			placement: defaultNewCredentialFillPlacement,
 			sites: [{ part: 'body' }, { part: 'body' }, { part: 'query' }],
 			surface: 'credential-client',
+			env,
+			credentialId: 'cred-1',
 		})
-		expect(info).toHaveBeenCalledTimes(2)
-		expect(info).toHaveBeenCalledWith(
-			'credential-fill-placement-would-block',
-			expect.objectContaining({
-				credentialName: 'apiKey',
-				part: 'body',
-				allowedParts: ['headers'],
-				surface: 'credential-client',
-			}),
-		)
-		expect(info).toHaveBeenCalledWith(
-			'credential-fill-placement-would-block',
-			expect.objectContaining({ part: 'query' }),
-		)
+		expect(schedule).toHaveBeenCalledTimes(2)
+		expect(schedule).toHaveBeenCalledWith({
+			env,
+			credentialId: 'cred-1',
+			filledParts: [],
+			wouldBlockParts: ['body'],
+		})
+		expect(schedule).toHaveBeenCalledWith({
+			env,
+			credentialId: 'cred-1',
+			filledParts: [],
+			wouldBlockParts: ['query'],
+		})
+		schedule.mockClear()
+		observeFillPlacementWouldBlock({
+			credentialName: 'apiKey',
+			placement: defaultNewCredentialFillPlacement,
+			site: { part: 'body' },
+			surface: 'placeholder',
+		})
+		expect(schedule).not.toHaveBeenCalled()
 	} finally {
-		info.mockRestore()
+		schedule.mockRestore()
 	}
 })

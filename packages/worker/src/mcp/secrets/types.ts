@@ -1,5 +1,6 @@
 import { type StorageContext } from '#mcp/storage.ts'
 import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
 
 export const secretScopeValues = ['session', 'package', 'user'] as const
 
@@ -59,6 +60,11 @@ export type SecretMetadata = {
 	ttlMs: number | null
 	/** Null means anywhere. */
 	placement: CredentialFillPlacement | null
+	/**
+	 * How fill placement was chosen. Null/omitted on legacy rows. See
+	 * `CredentialPlacementOrigin`.
+	 */
+	placementOrigin?: CredentialPlacementOrigin | null
 	/**
 	 * True when the value was cleared (Disconnect) but the credential row
 	 * remains. Reconnect fills the value back into this row.

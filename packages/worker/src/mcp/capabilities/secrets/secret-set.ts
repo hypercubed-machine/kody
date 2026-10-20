@@ -16,8 +16,6 @@ import {
 	updateUserSecretForPackage,
 } from '#mcp/secrets/service.ts'
 import { secretScopeValues } from '#mcp/secrets/types.ts'
-import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
-import { readDeclaredPackageSecretFillPlacement } from '#worker/credentials/package-manifest-fill-placement.ts'
 import { authorizeSecretSet } from './authorize-secret.ts'
 import { assertPackageScopedSecretWriteAvailable } from './package-scoped-secret-write.ts'
 import {
@@ -174,23 +172,6 @@ export const secretSetCapability = defineDomainCapability(
 					description: parsed.description,
 				})
 			} else if (typeof parsed.value === 'string' && parsed.value.length > 0) {
-				const packageIdForPlacement =
-					parsed.scope === 'package'
-						? (authorityPackageId ??
-							storageContext?.packageId ??
-							storageContext?.storageId ??
-							null)
-						: null
-				let placementOnInsert: CredentialFillPlacement | undefined
-				if (packageIdForPlacement && optIn.mode !== 'with-value') {
-					placementOnInsert = await readDeclaredPackageSecretFillPlacement({
-						env: ctx.env,
-						userId: ownerIdFromCaller(ctx.callerContext),
-						baseUrl: ctx.callerContext.baseUrl,
-						packageId: packageIdForPlacement,
-						secretName: parsed.name,
-					})
-				}
 				saved = await saveSecret({
 					env: ctx.env,
 					userId: ownerIdFromCaller(ctx.callerContext),
@@ -201,10 +182,10 @@ export const secretSetCapability = defineDomainCapability(
 					description: parsed.description ?? '',
 					expiresAt: parsed.expires_at,
 					storageContext,
+					baseUrl: ctx.callerContext.baseUrl,
 					...(optIn.mode === 'with-value'
 						? { credential: toSaveSecretCredential(ctx, optIn) }
 						: {}),
-					...(placementOnInsert !== undefined ? { placementOnInsert } : {}),
 				})
 			} else {
 				saved = await updateSecret({

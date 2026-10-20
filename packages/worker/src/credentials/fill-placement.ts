@@ -8,6 +8,10 @@
  * Enforcement ships later; this module is the shared schema and helpers.
  */
 import { z } from 'zod'
+import {
+	scheduleFillPlacementObservation,
+	type FillPlacementPartKey,
+} from '#worker/credentials/fill-placement-observations.ts'
 
 /** RFC 9110 token characters for HTTP field names. */
 const httpFieldNamePattern = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
@@ -189,9 +193,13 @@ export function fillPlacementRefusalMessage(input: {
 
 export type FillPlacementObserveSurface = 'placeholder' | 'credential-client'
 
+function fillPlacementPartKey(site: CredentialFillSite): FillPlacementPartKey {
+	return site.part === 'header' ? 'headers' : site.part
+}
+
 /**
- * Observe-mode: log when a fill would be refused, without blocking. Structured
- * fields only — never values or placeholders that carry secrets.
+ * Observe-mode: durable per-credential records of parts that were filled and
+ * parts that would have been refused, without blocking. Never values.
  */
 export function observeFillPlacementWouldBlock(input: {
 	credentialName: string
@@ -199,30 +207,38 @@ export function observeFillPlacementWouldBlock(input: {
 	site: CredentialFillSite
 	surface: FillPlacementObserveSurface
 	resolutionMode?: SecretResolutionFillMode
+	env?: Pick<Env, 'APP_DB'>
+	credentialId?: string | null
 }): void {
 	const mode = input.resolutionMode ?? 'on'
-	if (fillPlacementAllowsUnderResolution(input.placement, input.site, mode)) {
-		return
-	}
-	console.info('credential-fill-placement-would-block', {
-		credentialName: input.credentialName,
-		part: fillPlacementSiteLabel(input.site),
-		allowedParts: fillPlacementPartLabels(input.placement),
-		surface: input.surface,
+	const allowed = fillPlacementAllowsUnderResolution(
+		input.placement,
+		input.site,
+		mode,
+	)
+	const part = fillPlacementPartKey(input.site)
+	if (!input.env || !input.credentialId) return
+	scheduleFillPlacementObservation({
+		env: input.env,
+		credentialId: input.credentialId,
+		filledParts: allowed ? [part] : [],
+		wouldBlockParts: allowed ? [] : [part],
 	})
 }
 
-/** Observe each site that would be refused. Dedupes identical sites. */
+/** Observe each site. Dedupes identical part keys. */
 export function observeFillPlacementWouldBlockSites(input: {
 	credentialName: string
 	placement: CredentialFillPlacement | null
 	sites: ReadonlyArray<CredentialFillSite>
 	surface: FillPlacementObserveSurface
 	resolutionMode?: SecretResolutionFillMode
+	env?: Pick<Env, 'APP_DB'>
+	credentialId?: string | null
 }): void {
 	const seen = new Set<string>()
 	for (const site of input.sites) {
-		const key = fillPlacementSiteLabel(site)
+		const key = fillPlacementPartKey(site)
 		if (seen.has(key)) continue
 		seen.add(key)
 		observeFillPlacementWouldBlock({
@@ -231,6 +247,8 @@ export function observeFillPlacementWouldBlockSites(input: {
 			site,
 			surface: input.surface,
 			resolutionMode: input.resolutionMode,
+			env: input.env,
+			credentialId: input.credentialId,
 		})
 	}
 }

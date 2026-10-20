@@ -191,6 +191,7 @@ export const secretResolver: CredentialResolver<'secret'> = {
 					packageStamp: call.input.packageStamp,
 					credential,
 					placement: found.placement,
+					credentialId: found.credentialId,
 				})
 				if (credential.fillSites && credential.fillSites.length > 0) {
 					observeFillPlacementWouldBlockSites({
@@ -198,6 +199,8 @@ export const secretResolver: CredentialResolver<'secret'> = {
 						placement: found.placement,
 						sites: credential.fillSites,
 						surface: 'placeholder',
+						env: call.input.env,
+						credentialId: found.credentialId,
 					})
 				}
 			},
@@ -411,6 +414,7 @@ export const vaultSecretResolver: CredentialResolver<'provider-secret'> = {
 						packageStamp: call.input.packageStamp,
 						credential,
 						placement: binding.placement,
+						credentialId: binding.credentialId,
 					})
 					if (credential.fillSites && credential.fillSites.length > 0) {
 						observeFillPlacementWouldBlockSites({
@@ -418,6 +422,8 @@ export const vaultSecretResolver: CredentialResolver<'provider-secret'> = {
 							placement: binding.placement,
 							sites: credential.fillSites,
 							surface: 'placeholder',
+							env: call.input.env,
+							credentialId: binding.credentialId,
 						})
 					}
 				}

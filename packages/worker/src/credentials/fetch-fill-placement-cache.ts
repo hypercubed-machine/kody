@@ -8,9 +8,14 @@ import { type CredentialTarget } from './credential-resolver.ts'
 import { type CredentialFillPlacement } from './fill-placement.ts'
 import { type PackageStamp } from './package-stamp.ts'
 
+type CachedFillPlacement = {
+	placement: CredentialFillPlacement | null
+	credentialId: string | null
+}
+
 const fillPlacementByActor = new WeakMap<
 	RequestContext,
-	Map<string, CredentialFillPlacement | null>
+	Map<string, CachedFillPlacement>
 >()
 
 export function fetchFillPlacementCacheKey(input: {
@@ -72,6 +77,7 @@ export function rememberFetchFillPlacement(input: {
 	packageStamp?: PackageStamp | null
 	credential: CredentialTarget
 	placement: CredentialFillPlacement | null
+	credentialId?: string | null
 }): void {
 	const cacheKey = fetchFillPlacementCacheKey(input)
 	if (!input.actor || !cacheKey) return
@@ -80,7 +86,10 @@ export function rememberFetchFillPlacement(input: {
 		byKey = new Map()
 		fillPlacementByActor.set(input.actor, byKey)
 	}
-	byKey.set(cacheKey, input.placement)
+	byKey.set(cacheKey, {
+		placement: input.placement,
+		credentialId: input.credentialId ?? null,
+	})
 }
 
 export function readFetchFillPlacement(input: {
@@ -91,5 +100,16 @@ export function readFetchFillPlacement(input: {
 }): CredentialFillPlacement | null | undefined {
 	const cacheKey = fetchFillPlacementCacheKey(input)
 	if (!input.actor || !cacheKey) return undefined
-	return fillPlacementByActor.get(input.actor)?.get(cacheKey)
+	return fillPlacementByActor.get(input.actor)?.get(cacheKey)?.placement
+}
+
+export function readFetchFillPlacementCredentialId(input: {
+	actor: RequestContext | null
+	orgId: string
+	packageStamp?: PackageStamp | null
+	credential: CredentialTarget
+}): string | null | undefined {
+	const cacheKey = fetchFillPlacementCacheKey(input)
+	if (!input.actor || !cacheKey) return undefined
+	return fillPlacementByActor.get(input.actor)?.get(cacheKey)?.credentialId
 }
