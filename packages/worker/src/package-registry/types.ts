@@ -175,8 +175,9 @@ export const packageCredentialSlotSchema = z.strictObject({
 		.optional(),
 	/**
 	 * Optional fill placement for package-scope secrets this need names.
-	 * Applied on Connect / secretSet insert (and re-insert after Disconnect)
-	 * instead of the headers-only default. Reviewable at publish; package
+	 * Applied on Connect / secretSet insert when no row exists yet, instead of
+	 * the headers-only default. Disconnect keeps the row and placement;
+	 * reconnect does not re-apply this. Reviewable at publish; package
 	 * runtimes cannot set placement themselves. Distinct from inject.
 	 */
 	placement: credentialFillPlacementViewSchema.optional(),

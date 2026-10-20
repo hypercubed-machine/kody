@@ -27,15 +27,19 @@ for the locked Gmail drafts loop, written up in
 ## The rule: there is no `secret_get`
 
 The secrets capabilities are `secretList`, `secretSet`, `secretSetMany`,
-`secretLock`, `secretDelete`, and `secretJwtSign`. No capability returns a
-secret value. `secretList` returns metadata only: names, descriptions, approved
-hosts, expiry, remaining time to live, and `package_id` for package-scoped
-secrets. Explicit listing includes caller-owned package-scoped metadata even
-from execute; using a package secret still requires package context. Search does
-not return or rank those rows. `secretLock` returns grant-status metadata and an
-`approval_url` for the owner to click; it does not apply the grant. External
-vaults use [custom secret providers](./secret-providers.md) (`secretProvider*`
-capabilities and `{{secret/<provider>:<ref>}}` placeholders).
+`secretLock`, `secretDisconnect`, `secretDelete`, and `secretJwtSign`. No
+capability returns a secret value. `secretList` returns metadata only: names,
+descriptions, approved hosts, expiry, remaining time to live, `disconnected`
+(value cleared, row kept), and `package_id` for package-scoped secrets.
+`secretDisconnect` clears the value but keeps the credential row, placement,
+hosts, and grants so reconnect with `secretSet` restores the same record.
+`secretDelete` removes the credential and every record of it. Explicit listing
+includes caller-owned package-scoped metadata even from execute; using a package
+secret still requires package context. Search does not return or rank those
+rows. `secretLock` returns grant-status metadata and an `approval_url` for the
+owner to click; it does not apply the grant. External vaults use
+[custom secret providers](./secret-providers.md) (`secretProvider*` capabilities
+and `{{secret/<provider>:<ref>}}` placeholders).
 
 This is why you can hand an agent a job that needs your GitHub token without the
 token ever entering the prompt, the transcript, or the model provider's logs.

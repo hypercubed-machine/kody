@@ -53,6 +53,16 @@ test('blocks secretDelete with scope package', () => {
 	)
 })
 
+test('blocks secretDisconnect with scope package', () => {
+	assert.equal(
+		localPackageScopedSecretWriteBlockReason(
+			['kody', 'secretDisconnect'],
+			[{ name: 'token', scope: 'package' }],
+		),
+		localPackageScopedSecretWriteUnavailableMessage,
+	)
+})
+
 test('allows user-scoped secretSet and unrelated paths', () => {
 	assert.equal(
 		localPackageScopedSecretWriteBlockReason(

@@ -15,6 +15,7 @@ const packageSecretMutations = new Set([
 	'secretSet',
 	'secretSetMany',
 	'secretDelete',
+	'secretDisconnect',
 ])
 
 function firstArgRecord(

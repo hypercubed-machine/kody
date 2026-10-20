@@ -51,7 +51,13 @@ const credentialListItemSchema = z.object({
 	expiresAt: z.string().nullable(),
 	createdAt: z.string(),
 	updatedAt: z.string(),
-	status: z.enum(['ok', 'expired', 'needs_attention', 'disabled']),
+	status: z.enum([
+		'ok',
+		'expired',
+		'needs_attention',
+		'disabled',
+		'disconnected',
+	]),
 	statusMessage: z.string().nullable(),
 	mcp: z.object({ url: z.string(), enabled: z.boolean() }).nullable(),
 })

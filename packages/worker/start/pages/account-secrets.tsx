@@ -11,6 +11,7 @@ import { toast } from '#client/toast.ts'
 import {
 	saveSecret,
 	deleteSecret,
+	disconnectSecret,
 	approveSecretAccess,
 	rejectSecretAccess,
 } from '#start/server/account-mutations'
@@ -125,9 +126,9 @@ export function AccountSecretsPage({
 	const [packageApprovalHref, setPackageApprovalHref] = useState<string | null>(
 		currentHref,
 	)
-	const [saveState, setSaveState] = useState<'idle' | 'saving' | 'deleting'>(
-		'idle',
-	)
+	const [saveState, setSaveState] = useState<
+		'idle' | 'saving' | 'deleting' | 'disconnecting'
+	>('idle')
 	const [showSecretValue, setShowSecretValue] = useState(false)
 	const queryClient = useQueryClient()
 	const { actorKey, orgSlug, pageLocation } = useMatchedPageScope()
@@ -150,6 +151,15 @@ export function AccountSecretsPage({
 			deleteSecret,
 		),
 	)
+	const disconnect = useMutation(
+		secretMutationOptions(
+			queryClient,
+			actorKey,
+			orgSlug,
+			mutationResources,
+			disconnectSecret,
+		),
+	)
 	const approve = useMutation(
 		secretMutationOptions(
 			queryClient,
@@ -170,6 +180,7 @@ export function AccountSecretsPage({
 	)
 	const router = useRouter()
 	const [deleteArmed, setDeleteArmed] = useState(false)
+	const [disconnectArmed, setDisconnectArmed] = useState(false)
 	const navigate = (href: string) =>
 		void router.navigate({
 			to: relocateAccountHref(href, currentHref),
@@ -243,6 +254,7 @@ export function AccountSecretsPage({
 		preserveDraft = false,
 	) {
 		setDeleteArmed(false)
+		setDisconnectArmed(false)
 		setShowSecretValue(false)
 		if (!preserveDraft) {
 			const freshEditor = selection.isCreating
@@ -299,6 +311,7 @@ export function AccountSecretsPage({
 			if (!isCurrent()) return
 			save.reset()
 			remove.reset()
+			disconnect.reset()
 			approve.reset()
 			reject.reset()
 			const isPackageApproval = Boolean(approval.requestedPackageId)
@@ -343,6 +356,7 @@ export function AccountSecretsPage({
 			if (!isCurrent()) return
 			save.reset()
 			remove.reset()
+			disconnect.reset()
 			approve.reset()
 			reject.reset()
 			setSubmittingApprovalAction(null)
@@ -353,6 +367,7 @@ export function AccountSecretsPage({
 			if (isCurrent()) {
 				save.reset()
 				remove.reset()
+				disconnect.reset()
 				approve.reset()
 				reject.reset()
 			}
@@ -415,6 +430,7 @@ export function AccountSecretsPage({
 			if (!isCurrent()) return
 			save.reset()
 			remove.reset()
+			disconnect.reset()
 			approve.reset()
 			reject.reset()
 			if (!payload.ok) {
@@ -425,6 +441,7 @@ export function AccountSecretsPage({
 				})
 				setEditorState(recovered.editor)
 				setSaveState('idle')
+				setDisconnectArmed(false)
 				toast.error(payload.error)
 				navigate(recovered.href)
 				return
@@ -438,6 +455,7 @@ export function AccountSecretsPage({
 			setSavedEditorState(savedEditor)
 			setShowSecretValue(false)
 			setDeleteArmed(false)
+			setDisconnectArmed(false)
 			setSaveState('idle')
 			setMessage(warning ?? (wasCreating ? 'Created secret.' : 'Saved secret.'))
 
@@ -453,6 +471,7 @@ export function AccountSecretsPage({
 			if (!isCurrent()) return
 			save.reset()
 			remove.reset()
+			disconnect.reset()
 			approve.reset()
 			reject.reset()
 			setSaveState('idle')
@@ -463,6 +482,7 @@ export function AccountSecretsPage({
 			if (isCurrent()) {
 				save.reset()
 				remove.reset()
+				disconnect.reset()
 				approve.reset()
 				reject.reset()
 			}
@@ -486,6 +506,7 @@ export function AccountSecretsPage({
 			if (!isCurrent()) return
 			save.reset()
 			remove.reset()
+			disconnect.reset()
 			approve.reset()
 			reject.reset()
 
@@ -494,6 +515,7 @@ export function AccountSecretsPage({
 			if (!isCurrent()) return
 			save.reset()
 			remove.reset()
+			disconnect.reset()
 			approve.reset()
 			reject.reset()
 			setSaveState('idle')
@@ -504,6 +526,57 @@ export function AccountSecretsPage({
 			if (isCurrent()) {
 				save.reset()
 				remove.reset()
+				disconnect.reset()
+				approve.reset()
+				reject.reset()
+			}
+		}
+	}
+
+	async function disconnectSelectedSecret() {
+		if (!editorState.currentId || saveState !== 'idle') return
+
+		setSaveState('disconnecting')
+		setMessage(null)
+
+		const isCurrent = capture()
+		try {
+			await disconnect.mutateAsync({
+				orgSlug: orgSlug ?? undefined,
+				fields: {
+					currentId: editorState.currentId,
+				},
+			})
+			if (!isCurrent()) return
+			save.reset()
+			remove.reset()
+			disconnect.reset()
+			approve.reset()
+			reject.reset()
+			setDisconnectArmed(false)
+			setDeleteArmed(false)
+			setSaveState('idle')
+			setMessage(
+				'Disconnected. The credential record and placement remain. Save a value to reconnect.',
+			)
+			setEditorState({ ...editorState, value: '' })
+			setShowSecretValue(false)
+		} catch (error) {
+			if (!isCurrent()) return
+			save.reset()
+			remove.reset()
+			disconnect.reset()
+			approve.reset()
+			reject.reset()
+			setSaveState('idle')
+			setMessage(
+				error instanceof Error ? error.message : 'Unable to disconnect secret.',
+			)
+		} finally {
+			if (isCurrent()) {
+				save.reset()
+				remove.reset()
+				disconnect.reset()
 				approve.reset()
 				reject.reset()
 			}
@@ -766,7 +839,12 @@ export function AccountSecretsPage({
 								currentHref,
 							),
 					cells: {
-						name: <span css={clampedCellCss}>{secret.name}</span>,
+						name: (
+							<span css={clampedCellCss}>
+								{secret.name}
+								{secret.disconnected ? ' (disconnected)' : ''}
+							</span>
+						),
 						scope: getScopeLabel(secret.scope),
 						package: (
 							<span css={clampedCellCss}>{secret.packageTitle || '—'}</span>
@@ -776,7 +854,9 @@ export function AccountSecretsPage({
 						),
 						ttl: (
 							<span css={recordStampCss}>
-								{formatRelativeTtl(secret.ttlMs)}
+								{secret.disconnected
+									? 'Disconnected'
+									: formatRelativeTtl(secret.ttlMs)}
 							</span>
 						),
 					},
@@ -804,10 +884,21 @@ export function AccountSecretsPage({
 								},
 								secretValueAutofocusKey,
 								deleteArmed,
-								onDeleteArm: () => setDeleteArmed(true),
+								onDeleteArm: () => {
+									setDisconnectArmed(false)
+									setDeleteArmed(true)
+								},
 								onDeleteReset: () => setDeleteArmed(false),
+								disconnectArmed,
+								onDisconnectArm: () => {
+									setDeleteArmed(false)
+									setDisconnectArmed(true)
+								},
+								onDisconnectReset: () => setDisconnectArmed(false),
+								disconnected: selectedSecret?.disconnected === true,
 								onSave: saveSecretChanges,
 								onDelete: () => void deleteSelectedSecret(),
+								onDisconnect: () => void disconnectSelectedSecret(),
 								updateAllowedHost,
 								addAllowedHost,
 								removeAllowedHost,

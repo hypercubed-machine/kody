@@ -37,6 +37,7 @@ import {
 } from './secret-bindings.ts'
 import { type StorageContext } from '#mcp/storage.ts'
 import {
+	clearSecretValueEntry,
 	deleteSecretEntry,
 	getSecretBucket,
 	getSecretEntry,
@@ -70,6 +71,7 @@ import {
 	runAppDbBatchWithOrgAudit,
 } from '#worker/orgs/org-audit.ts'
 import { readDeclaredPackageSecretFillPlacement } from '#worker/credentials/package-manifest-fill-placement.ts'
+import { isDisconnectedSecretEncryptedValue } from '#mcp/secrets/disconnected.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { stampFirstSecret } from '#worker/identity/activation-stamps.ts'
 
@@ -868,6 +870,7 @@ export async function listSecrets(
 				updatedAt: row.updated_at,
 				expiresAt: row.expires_at,
 				placement: readCredentialFillPlacement(row.placement_json),
+				disconnected: row.disconnected,
 			}),
 		}))
 	return listed
@@ -951,7 +954,11 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 	readValue: () => Promise<ResolvedSecret>
 }> {
 	const found = await findSecretEntry(input)
-	if (!found || found.entry.kind !== 'secret') {
+	if (
+		!found ||
+		found.entry.kind !== 'secret' ||
+		isDisconnectedSecretEncryptedValue(found.entry.encrypted_value)
+	) {
 		const missing: ResolvedSecret = {
 			found: false,
 			credentialId: null,
@@ -1050,15 +1057,22 @@ export async function resolveSecret(
 	input: ResolveSecretInput,
 ): Promise<ResolvedSecret> {
 	const found = await findSecretEntry(input)
-	if (!found) {
+	if (
+		!found ||
+		isDisconnectedSecretEncryptedValue(found.entry.encrypted_value)
+	) {
 		return {
 			found: false,
-			credentialId: null,
+			credentialId: found?.entry.id ?? null,
 			value: null,
-			scope: null,
-			allowedHosts: [],
-			allowedPackages: [],
-			placement: null,
+			scope: found?.scope ?? null,
+			allowedHosts: found ? parseAllowedHosts(found.entry.allowed_hosts) : [],
+			allowedPackages: found
+				? parseAllowedPackages(found.entry.allowed_packages)
+				: [],
+			placement: found
+				? readCredentialFillPlacement(found.entry.placement_json)
+				: null,
 		}
 	}
 	return {
@@ -1090,6 +1104,37 @@ export async function deleteSecret(input: DeleteSecretInput) {
 		userId: input.userId,
 		bucketId: bucket.id,
 		name: input.name,
+	})
+}
+
+/**
+ * Disconnect: clear the secret value, keep the credential row (id, placement,
+ * hosts, grants). Reconnect with secretSet fills the value back into the same
+ * row so placement is preserved. Distinct from deleteSecret.
+ */
+export async function disconnectSecret(input: DeleteSecretInput) {
+	assertSecretNameAllowed(input.name)
+	const bucket = await getExistingBucketForScope({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		scope: input.scope,
+		storageContext: input.storageContext ?? null,
+	})
+	if (!bucket) return false
+	const existing = await getSecretEntry({
+		db: input.env.APP_DB,
+		bucketId: bucket.id,
+		name: input.name.trim(),
+	})
+	if (!existing) return false
+	if (isDisconnectedSecretEncryptedValue(existing.encrypted_value)) {
+		return true
+	}
+	return clearSecretValueEntry({
+		db: input.env.APP_DB,
+		bucketId: bucket.id,
+		name: input.name.trim(),
+		updatedAt: new Date().toISOString(),
 	})
 }
 
@@ -1220,6 +1265,7 @@ export async function readSecretMetadata(
 		updatedAt: entry.updated_at,
 		expiresAt: earliestSecretExpiresAt(entry.expires_at, bucket.expires_at),
 		placement: readCredentialFillPlacement(entry.placement_json),
+		disconnected: isDisconnectedSecretEncryptedValue(entry.encrypted_value),
 	})
 }
 
@@ -1520,6 +1566,7 @@ function toSecretMetadata(input: {
 	updatedAt: string
 	expiresAt: string | null
 	placement?: CredentialFillPlacement | null
+	disconnected?: boolean
 }): SecretMetadata {
 	return {
 		name: input.name,
@@ -1533,6 +1580,7 @@ function toSecretMetadata(input: {
 		expiresAt: input.expiresAt,
 		ttlMs: secretTtlMs(input.expiresAt),
 		placement: input.placement === undefined ? null : input.placement,
+		disconnected: input.disconnected === true,
 	}
 }
 

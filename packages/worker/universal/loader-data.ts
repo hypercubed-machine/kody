@@ -2364,6 +2364,8 @@ export type AccountSecretListItem = {
 	ttlMs: number | null
 	/** Null means anywhere. */
 	placement: CredentialFillPlacementView | null
+	/** True when Disconnect cleared the value; the row and placement remain. */
+	disconnected: boolean
 }
 
 export type AccountSecretDetail = AccountSecretListItem & {

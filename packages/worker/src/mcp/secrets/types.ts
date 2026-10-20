@@ -34,6 +34,10 @@ export type SecretEntryRow = {
 	bucket_id: string
 	name: string
 	description: string
+	/**
+	 * Ciphertext, or empty when disconnected (value cleared; row and
+	 * placement kept). See `isDisconnectedSecretEncryptedValue`.
+	 */
 	encrypted_value: string
 	allowed_hosts: string
 	allowed_packages: string
@@ -55,6 +59,11 @@ export type SecretMetadata = {
 	ttlMs: number | null
 	/** Null means anywhere. */
 	placement: CredentialFillPlacement | null
+	/**
+	 * True when the value was cleared (Disconnect) but the credential row
+	 * remains. Reconnect fills the value back into this row.
+	 */
+	disconnected: boolean
 }
 
 /** Listed secrets carry the credential id that grants are keyed by. */

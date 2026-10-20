@@ -286,6 +286,7 @@ function secret(name: string) {
 		expiresAt: null,
 		ttlMs: null,
 		placement: null,
+		disconnected: false,
 	}
 }
 

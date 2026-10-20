@@ -20,6 +20,7 @@ export const saveSecretSchema = z.object({
 	placement: credentialFillPlacementViewSchema.nullable().optional(),
 })
 export const deleteSecretSchema = z.object({ currentId: z.string() })
+export const disconnectSecretSchema = z.object({ currentId: z.string() })
 const oauthFields = {
 	provider: z.string(),
 	tokenUrl: text,

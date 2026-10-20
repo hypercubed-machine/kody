@@ -208,9 +208,12 @@ Declare `kind` only when the package needs a specific shape:
   `provider`.
 - Needs have no hosts or inject fields (those belong to the credential). An
   optional `placement` on a need is the reviewable default for package-scope
-  secrets that need inserts as that name (Connect / `secretSet` / re-insert
-  after Disconnect), instead of headers-only. Package runtimes still cannot set
-  placement themselves; the owner can edit it on the credential detail page.
+  secrets that need inserts as that name (Connect / `secretSet` when no row
+  exists yet), instead of headers-only. Disconnect clears the value but keeps
+  the row and placement; reconnect fills the same record so placement wins over
+  the manifest default. Delete removes the credential entirely; a later Connect
+  is a new insert. Package runtimes still cannot set placement themselves; the
+  owner can edit it on the credential detail page.
 
 ### Let app visitors use your credential
 

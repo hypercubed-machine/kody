@@ -8,6 +8,7 @@ import { operationResult } from '#app/operation-result.ts'
 import {
 	saveAccountSecret,
 	deleteAccountSecret,
+	disconnectAccountSecret,
 	approveAccountSecretAccess,
 	rejectAccountSecretAccess,
 	saveAccountOAuthApp,
@@ -75,6 +76,14 @@ export function testAccountSecretsApiHandler(env: Env) {
 						...context,
 						fields: values as Parameters<
 							typeof deleteAccountSecret
+						>[0]['fields'],
+					})
+					break
+				case 'disconnect':
+					result = await disconnectAccountSecret({
+						...context,
+						fields: values as Parameters<
+							typeof disconnectAccountSecret
 						>[0]['fields'],
 					})
 					break

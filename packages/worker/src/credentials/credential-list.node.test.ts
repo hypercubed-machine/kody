@@ -358,6 +358,22 @@ test('a Key in an expired bucket shows as expired at the bucket expiry', async (
 	})
 })
 
+test('a Key with an empty value shows as disconnected, not missing', async () => {
+	const t = await setup()
+	t.sqlite
+		.prepare(`UPDATE secret_entries SET encrypted_value = '' WHERE id = ?`)
+		.run(t.stripeKeyId)
+	const items = await listCredentialsForViewer({
+		env: t.env,
+		request: t.requestAs(t.bea, 'owner'),
+		now: new Date(now),
+	})
+	expect(items.find((item) => item.name === 'stripeKey')).toMatchObject({
+		status: 'disconnected',
+		statusMessage: 'Disconnected. Connect again to restore the value.',
+	})
+})
+
 test('lists more granted personal credentials than one D1 statement can bind', async () => {
 	const t = await setup()
 	t.sqlite

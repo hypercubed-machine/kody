@@ -7,7 +7,11 @@ import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { assertPackageCanAccessResolvedSecret } from '#mcp/secrets/package-access.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
-import { deleteSecret, findSecret } from '#mcp/secrets/service.ts'
+import {
+	deleteSecret,
+	disconnectSecret,
+	findSecret,
+} from '#mcp/secrets/service.ts'
 import { secretScopeValues } from '#mcp/secrets/types.ts'
 import { authorizeSecret } from './authorize-secret.ts'
 import { assertPackageScopedSecretWriteAvailable } from './package-scoped-secret-write.ts'
@@ -18,7 +22,7 @@ export const secretDeleteCapability = defineDomainCapability(
 		name: 'secretDelete',
 		orgPermission: 'secret:delete',
 		description:
-			'Delete an existing secret reference for the signed-in user. Plaintext values stay hidden. Use `/connect/secret-set` for user-provided API key, token, and credential entry or rotation. Use this to remove execute-time access to a secret.',
+			'Delete an existing secret reference for the signed-in user: removes the credential row and every record of it (including placement and grants). Plaintext values stay hidden. Distinct from secretDisconnect, which clears only the value and keeps the row. Prefer secretDisconnect for package Connect/Disconnect flows that should preserve placement. When a package runtime calls this on a package-scope secret, the platform disconnects instead of deleting so existing package Disconnect code keeps placement.',
 		keywords: ['secret', 'delete', 'remove', 'revoke', 'credential'],
 		readOnly: false,
 		idempotent: false,
@@ -42,11 +46,19 @@ export const secretDeleteCapability = defineDomainCapability(
 				scope: args.scope,
 				storageContext,
 			})
-			await authorizeSecret(ctx, 'secret:delete', {
-				name: args.name,
-				scope: args.scope,
-				storageContext,
-			})
+			// Package-runtime Disconnect historically called secretDelete on
+			// package-scope secrets. Map that to disconnect so placement survives.
+			const packageRuntimeDisconnect =
+				args.scope === 'package' && Boolean(authorityPackageId)
+			await authorizeSecret(
+				ctx,
+				packageRuntimeDisconnect ? 'secret:write' : 'secret:delete',
+				{
+					name: args.name,
+					scope: args.scope,
+					storageContext,
+				},
+			)
 			if (args.scope === 'user' && authorityPackageId) {
 				const existing = await findSecret({
 					env: ctx.env,
@@ -68,6 +80,16 @@ export const secretDeleteCapability = defineDomainCapability(
 						intent: 'mutate',
 					})
 				}
+			}
+			if (packageRuntimeDisconnect) {
+				const disconnected = await disconnectSecret({
+					env: ctx.env,
+					userId: ownerIdFromCaller(ctx.callerContext),
+					name: args.name,
+					scope: args.scope,
+					storageContext,
+				})
+				return { deleted: disconnected }
 			}
 			return {
 				deleted: await deleteSecret({

@@ -332,8 +332,10 @@ export function renderCredentialDetail(input: {
 											package may also declare placement on the matching{' '}
 											<code css={codeCss}>kody.credentials</code> need. That
 											declaration applies only when inserting a new
-											package-scope secret. Updating an existing secret keeps
-											its stored placement.
+											package-scope secret. Disconnect keeps this row and its
+											placement; reconnect fills the same record. Delete removes
+											the credential; a later Connect is a new insert. Updating
+											an existing secret keeps its stored placement.
 										</p>
 									) : null}
 								</>

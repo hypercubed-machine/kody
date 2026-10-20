@@ -11,6 +11,7 @@ import { credentialTriggerPickSetCapability } from './credential-trigger-pick-se
 import { credentialUpdateCapability } from './credential-update.ts'
 import { jwtSignCapability } from './jwt-sign.ts'
 import { secretDeleteCapability } from './secret-delete.ts'
+import { secretDisconnectCapability } from './secret-disconnect.ts'
 import { secretListCapability } from './secret-list.ts'
 import { secretLockCapability } from './secret-lock.ts'
 import { secretProviderBindCapability } from './secret-provider-bind.ts'
@@ -41,6 +42,7 @@ export const secretsDomain = defineDomain({
 		secretProviderBindCapability,
 		secretProviderUnbindCapability,
 		secretProviderLockCapability,
+		secretDisconnectCapability,
 		secretDeleteCapability,
 		credentialListCapability,
 		credentialUpdateCapability,

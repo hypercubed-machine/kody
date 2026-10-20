@@ -1,6 +1,7 @@
 import {
 	saveSecretSchema,
 	deleteSecretSchema,
+	disconnectSecretSchema,
 	saveOAuthAppSchema,
 	connectOAuthSchema,
 	exchangeOAuthTokenSchema,
@@ -108,6 +109,31 @@ export const deleteSecret = createServerFn({ method: 'POST' })
 			async (context) =>
 				requireOperationResult(
 					await deleteAccountSecret({ ...context, ...data }),
+				),
+		)
+	})
+
+export const disconnectSecret = createServerFn({ method: 'POST' })
+	.inputValidator(
+		resourceInput
+			.omit({ search: true })
+			.extend({ fields: disconnectSecretSchema }),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ disconnectAccountSecret },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-secrets.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation(
+			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
+			async (context) =>
+				requireOperationResult(
+					await disconnectAccountSecret({ ...context, ...data }),
 				),
 		)
 	})

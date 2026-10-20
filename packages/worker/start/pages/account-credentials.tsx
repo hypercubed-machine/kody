@@ -92,6 +92,7 @@ function statusColor(credential: CredentialListItem) {
 		case 'needs_attention':
 			return colors.error
 		case 'disabled':
+		case 'disconnected':
 			return colors.textMuted
 		default: {
 			const exhaustive: never = credential.status

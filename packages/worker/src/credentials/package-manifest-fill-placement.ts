@@ -1,9 +1,10 @@
 /**
  * Apply a package's declared `kody.credentials` fill placement when inserting
- * a package-scope secret for that package (Connect / secretSet / re-insert
- * after Disconnect). Runtime cannot pass placement; the published manifest is
- * the reviewable source. Omitted declaration → caller keeps headers-only
- * default. Failures to load the manifest are ignored so Connect still works.
+ * a package-scope secret for that package (Connect / secretSet when no row
+ * exists yet). Disconnect keeps the row; reconnect does not re-apply this.
+ * Runtime cannot pass placement; the published manifest is the reviewable
+ * source. Omitted declaration → caller keeps headers-only default. Failures to
+ * load the manifest are ignored so Connect still works.
  */
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {

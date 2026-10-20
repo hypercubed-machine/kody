@@ -107,6 +107,7 @@ type SecretRow = {
 	updated_at: string
 	expires_at: string | null
 	bucket_expires_at: string | null
+	encrypted_value: string | null
 }
 
 async function loadSecretRows(input: {
@@ -121,7 +122,7 @@ async function loadSecretRows(input: {
 				`SELECT e.id, e.name, e.kind, e.provider, e.description, e.allowed_hosts,
 					e.allowed_packages, e.inject_json, e.placement_json, b.scope AS bucket_scope,
 					b.binding_key, e.created_at, e.updated_at, e.expires_at,
-					b.expires_at AS bucket_expires_at
+					b.expires_at AS bucket_expires_at, e.encrypted_value
 				FROM secret_entries e JOIN secret_buckets b ON b.id = e.bucket_id
 				WHERE b.user_id = ? AND b.scope IN ('user', 'package')
 					AND e.deleted_at IS NULL AND b.deleted_at IS NULL
@@ -141,6 +142,18 @@ async function loadSecretRows(input: {
 			row.bucket_expires_at,
 		)
 		const expired = expiresAt !== null && expiresAt <= input.now
+		const disconnected =
+			row.encrypted_value == null || row.encrypted_value.length === 0
+		const status = disconnected
+			? ('disconnected' as const)
+			: expired
+				? ('expired' as const)
+				: ('ok' as const)
+		const statusMessage = disconnected
+			? 'Disconnected. Connect again to restore the value.'
+			: expired
+				? 'This credential has expired.'
+				: null
 		return [
 			{
 				family: 'secret',
@@ -160,8 +173,8 @@ async function loadSecretRows(input: {
 				expiresAt,
 				createdAt: row.created_at,
 				updatedAt: row.updated_at,
-				status: expired ? 'expired' : 'ok',
-				statusMessage: expired ? 'This credential has expired.' : null,
+				status,
+				statusMessage,
 				mcp: null,
 			},
 		]

@@ -45,15 +45,20 @@ export type SecretEditorProps = {
 	packagesById: ReadonlyMap<string, { kodyId: string; name: string }>
 	canCreatePackageSecrets: boolean
 	isMutating: boolean
-	saveState: 'idle' | 'saving' | 'deleting'
+	saveState: 'idle' | 'saving' | 'deleting' | 'disconnecting'
 	showSecretValue: boolean
 	onToggleShowSecretValue: () => void
 	secretValueAutofocusKey: string
 	deleteArmed: boolean
 	onDeleteArm: () => void
 	onDeleteReset: () => void
+	disconnectArmed: boolean
+	onDisconnectArm: () => void
+	onDisconnectReset: () => void
+	disconnected: boolean
 	onSave: (event: FormEvent<HTMLFormElement>) => void
 	onDelete: () => void
+	onDisconnect: () => void
 	updateAllowedHost: (index: number, value: string) => void
 	addAllowedHost: () => void
 	removeAllowedHost: (index: number) => void
@@ -80,8 +85,13 @@ export function SecretEditor(props: SecretEditorProps) {
 		deleteArmed,
 		onDeleteArm,
 		onDeleteReset,
+		disconnectArmed,
+		onDisconnectArm,
+		onDisconnectReset,
+		disconnected,
 		onSave,
 		onDelete,
+		onDisconnect,
 		updateAllowedHost,
 		addAllowedHost,
 		removeAllowedHost,
@@ -109,7 +119,9 @@ export function SecretEditor(props: SecretEditorProps) {
 				<p css={{ margin: 0, color: colors.textMuted }}>
 					{isCreating
 						? 'Create a new user or package secret.'
-						: 'Update the secret value and metadata for this entry.'}
+						: disconnected
+							? 'Disconnected. Placement and other metadata remain. Save a value to reconnect into this same record.'
+							: 'Update the secret value and metadata for this entry.'}
 				</p>
 			</div>
 
@@ -330,34 +342,66 @@ export function SecretEditor(props: SecretEditorProps) {
 					{saveState === 'saving' ? 'Saving...' : 'Save'}
 				</button>
 				{editorState.currentId ? (
-					<button
-						type="button"
-						disabled={isMutating}
-						aria-label={
-							deleteArmed
-								? `Confirm delete secret "${editorState.name}"`
-								: `Delete secret "${editorState.name}"`
-						}
-						title={
-							deleteArmed
-								? `Click again to delete "${editorState.name}"`
-								: `Delete secret "${editorState.name}"`
-						}
-						css={dangerButtonCss}
-						onBlur={onDeleteReset}
-						onClick={() => {
-							if (deleteArmed) {
-								onDeleteReset()
-								onDelete()
-							} else onDeleteArm()
-						}}
-					>
-						{saveState === 'deleting'
-							? 'Deleting...'
-							: deleteArmed
-								? 'Confirm delete'
-								: 'Delete'}
-					</button>
+					<>
+						{disconnected ? null : (
+							<button
+								type="button"
+								disabled={isMutating}
+								aria-label={
+									disconnectArmed
+										? `Confirm disconnect secret "${editorState.name}"`
+										: `Disconnect secret "${editorState.name}"`
+								}
+								title={
+									disconnectArmed
+										? `Click again to clear the value for "${editorState.name}" and keep the record`
+										: `Clear the value for "${editorState.name}" but keep the record and placement. Distinct from Delete.`
+								}
+								css={secondaryButtonCss}
+								onBlur={onDisconnectReset}
+								onClick={() => {
+									if (disconnectArmed) {
+										onDisconnectReset()
+										onDisconnect()
+									} else onDisconnectArm()
+								}}
+							>
+								{saveState === 'disconnecting'
+									? 'Disconnecting...'
+									: disconnectArmed
+										? 'Confirm disconnect'
+										: 'Disconnect'}
+							</button>
+						)}
+						<button
+							type="button"
+							disabled={isMutating}
+							aria-label={
+								deleteArmed
+									? `Confirm delete secret "${editorState.name}"`
+									: `Delete secret "${editorState.name}"`
+							}
+							title={
+								deleteArmed
+									? `Click again to permanently delete "${editorState.name}"`
+									: `Permanently delete "${editorState.name}" and every record of it, including placement. Distinct from Disconnect.`
+							}
+							css={dangerButtonCss}
+							onBlur={onDeleteReset}
+							onClick={() => {
+								if (deleteArmed) {
+									onDeleteReset()
+									onDelete()
+								} else onDeleteArm()
+							}}
+						>
+							{saveState === 'deleting'
+								? 'Deleting...'
+								: deleteArmed
+									? 'Confirm delete'
+									: 'Delete'}
+						</button>
+					</>
 				) : null}
 			</div>
 		</form>

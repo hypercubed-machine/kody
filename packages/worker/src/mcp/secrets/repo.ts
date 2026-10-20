@@ -9,6 +9,10 @@ import {
 	defaultNewCredentialFillPlacement,
 	serializeCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
+import {
+	disconnectedSecretEncryptedValue,
+	isDisconnectedSecretEncryptedValue,
+} from '#mcp/secrets/disconnected.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	type SecretBucketRow,
@@ -41,6 +45,8 @@ type SecretMetadataRow = {
 	expires_at: string | null
 	/** Null means anywhere. */
 	placement_json: string | null
+	/** True when Disconnect cleared the value; row and placement remain. */
+	disconnected: boolean
 }
 
 type SecretEntryLookup = SecretEntryRow & {
@@ -754,7 +760,7 @@ export async function listSecretMetadataForBucket(input: {
 }): Promise<Array<SecretMetadataRow>> {
 	const { results } = await input.db
 		.prepare(
-			`SELECT id, ? AS scope, ? AS binding_key, name, description, allowed_hosts, allowed_packages, created_at, updated_at, expires_at AS entry_expires_at, ? AS bucket_expires_at, placement_json
+			`SELECT id, ? AS scope, ? AS binding_key, name, description, allowed_hosts, allowed_packages, created_at, updated_at, expires_at AS entry_expires_at, ? AS bucket_expires_at, placement_json, encrypted_value
 			FROM secret_entries
 			WHERE bucket_id = ?${andLiveDeletedAtSql()}
 			ORDER BY name ASC`,
@@ -777,7 +783,7 @@ export async function listUserScopeSecretMetadata(input: {
 	const now = input.now ?? new Date().toISOString()
 	const { results } = await input.db
 		.prepare(
-			`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json
+			`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json, e.encrypted_value AS encrypted_value
 			FROM secret_buckets b
 			JOIN secret_entries e ON e.bucket_id = b.id
 			WHERE b.user_id = ? AND b.scope = 'user'
@@ -851,7 +857,7 @@ export async function listPackageScopeSecretMetadata(input: {
 		const placeholders = idChunk.map(() => '?').join(', ')
 		const { results } = await input.db
 			.prepare(
-				`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json
+				`SELECT e.id, b.scope, b.binding_key, e.name, e.description, e.allowed_hosts, e.allowed_packages, e.created_at, e.updated_at, e.expires_at AS entry_expires_at, b.expires_at AS bucket_expires_at, e.placement_json AS placement_json, e.encrypted_value AS encrypted_value
 				FROM secret_buckets b
 				JOIN secret_entries e ON e.bucket_id = b.id
 				WHERE b.user_id = ? AND b.scope = 'package'
@@ -904,6 +910,8 @@ function mapSecretMetadataRow(row: Record<string, unknown>): SecretMetadataRow {
 				? null
 				: String(row['expires_at'])
 			: String(row['bucket_expires_at'])
+	const encryptedValue =
+		row['encrypted_value'] == null ? null : String(row['encrypted_value'])
 	return {
 		id: String(row['id']),
 		scope: String(row['scope']) as SecretScope,
@@ -917,5 +925,32 @@ function mapSecretMetadataRow(row: Record<string, unknown>): SecretMetadataRow {
 		expires_at: earliestSecretExpiresAt(entryExpiresAt, bucketExpiresAt),
 		placement_json:
 			row['placement_json'] == null ? null : String(row['placement_json']),
+		disconnected: isDisconnectedSecretEncryptedValue(encryptedValue),
 	}
+}
+
+/**
+ * Clear the secret value while keeping the row, placement, hosts, and grants.
+ * Empty ciphertext is the disconnected sentinel. Does not touch grants.
+ */
+export async function clearSecretValueEntry(input: {
+	db: D1Database
+	bucketId: string
+	name: string
+	updatedAt: string
+}): Promise<boolean> {
+	const result = await input.db
+		.prepare(
+			`UPDATE secret_entries
+			SET encrypted_value = ?, updated_at = ?
+			WHERE bucket_id = ? AND name = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			disconnectedSecretEncryptedValue,
+			input.updatedAt,
+			input.bucketId,
+			input.name,
+		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
 }

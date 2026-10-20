@@ -145,6 +145,7 @@ const mockModule = vi.hoisted(() => {
 			expiresAt: null,
 			ttlMs: null,
 			placement: null,
+			disconnected: false,
 		})),
 		setSecretAllowedHosts: vi.fn<typeof secretsService.setSecretAllowedHosts>(
 			async (input) => ({
@@ -158,6 +159,7 @@ const mockModule = vi.hoisted(() => {
 				expiresAt: null,
 				ttlMs: null,
 				placement: null,
+				disconnected: false,
 			}),
 		),
 		deleteIntegration: vi.fn<typeof IntegrationsService.deleteIntegration>(

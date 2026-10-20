@@ -197,11 +197,14 @@ credentials; opt-in types that a package can declare are described in
   applies them all at once and turns on any trigger they map.
 - Optional `placement` on a slot declares which request parts placeholders for
   that package-scope secret may fill (headers, query, path, and/or body). It is
-  reviewable at publish and applied when the secret is inserted (Connect,
-  `secretSet`, or re-insert after Disconnect), instead of the headers-only
-  default. Package runtimes cannot set placement themselves; the owner can edit
-  it on the credential detail page. Without a declaration, new package-scope
-  secrets still default to headers-only. See
+  reviewable at publish and applied when the secret is inserted (Connect or
+  `secretSet` when no row exists yet), instead of the headers-only default.
+  Disconnect clears the value but keeps the row and placement; reconnect fills
+  the same record so preserved placement wins over the manifest default. Delete
+  removes the credential; a later Connect is a new insert. Package runtimes
+  cannot set placement themselves; the owner can edit it on the credential
+  detail page. Without a declaration, new package-scope secrets still default to
+  headers-only. See
   [Credentials](../guides/credentials.md#keys-and-placeholders) and
   [ADR 0068 amendment 2026-10-20](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-20-package-manifest-fill-placement).
   The fetch gateway still fills today; enforcement ships later. Placeholders

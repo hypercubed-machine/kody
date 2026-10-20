@@ -12,6 +12,7 @@ import {
 	parseSecretScopeUnavailableMessage,
 } from './errors.ts'
 import {
+	disconnectSecret,
 	listPackageSecretsByPackageIds,
 	listSecrets,
 	listUserSecretsForSearch,
@@ -571,4 +572,66 @@ test('scope move can preserve anywhere placement; brand-new Keys stay headers-on
 	await expect(
 		resolveSecret({ env, userId, name: 'brandNew', scope: 'user' }),
 	).resolves.toMatchObject({ found: true, placement: { headers: true } })
+})
+
+test('disconnect clears the value; reconnect preserves placement over a later default', async () => {
+	const { env } = await createSecretEnv()
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'keptPlacement',
+		value: 'secret-value',
+		placementOnInsert: { headers: true, body: true },
+	})
+	await expect(
+		resolveSecret({ env, userId, name: 'keptPlacement', scope: 'user' }),
+	).resolves.toMatchObject({
+		found: true,
+		value: 'secret-value',
+		placement: { headers: true, body: true },
+	})
+	await expect(listSecrets({ env, userId, scope: 'user' })).resolves.toEqual([
+		expect.objectContaining({
+			name: 'keptPlacement',
+			disconnected: false,
+			placement: { headers: true, body: true },
+		}),
+	])
+
+	await expect(
+		disconnectSecret({ env, userId, name: 'keptPlacement', scope: 'user' }),
+	).resolves.toBe(true)
+	await expect(
+		resolveSecret({ env, userId, name: 'keptPlacement', scope: 'user' }),
+	).resolves.toMatchObject({ found: false })
+	await expect(listSecrets({ env, userId, scope: 'user' })).resolves.toEqual([
+		expect.objectContaining({
+			name: 'keptPlacement',
+			disconnected: true,
+			placement: { headers: true, body: true },
+		}),
+	])
+
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'keptPlacement',
+		value: 'restored-value',
+	})
+	await expect(
+		resolveSecret({ env, userId, name: 'keptPlacement', scope: 'user' }),
+	).resolves.toMatchObject({
+		found: true,
+		value: 'restored-value',
+		placement: { headers: true, body: true },
+	})
+	await expect(listSecrets({ env, userId, scope: 'user' })).resolves.toEqual([
+		expect.objectContaining({
+			name: 'keptPlacement',
+			disconnected: false,
+			placement: { headers: true, body: true },
+		}),
+	])
 })

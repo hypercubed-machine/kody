@@ -179,6 +179,8 @@ export type CredentialListItemStatus =
 	| 'expired'
 	| 'needs_attention'
 	| 'disabled'
+	/** Secret value cleared; row and placement kept. Reconnect to restore. */
+	| 'disconnected'
 
 export type CredentialListItem = {
 	id: string

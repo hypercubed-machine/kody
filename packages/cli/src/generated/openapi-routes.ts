@@ -889,6 +889,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['scope', 'name'],
 	},
 	{
+		operationId: 'secretDisconnect',
+		method: 'POST',
+		pathTemplate: '/v1/secrets/{scope}/{name}/disconnect',
+		pathParamNames: ['scope', 'name'],
+	},
+	{
 		operationId: 'secretJwtSign',
 		method: 'POST',
 		pathTemplate: '/v1/secrets/jwt',

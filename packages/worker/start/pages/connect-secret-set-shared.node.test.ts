@@ -83,6 +83,7 @@ test('findMatchingSecretForSetup resolves rotation targets by name and scope', (
 			createdAt: '2026-01-01T00:00:00.000Z',
 			updatedAt: '2026-01-01T00:00:00.000Z',
 			expiresAt: null,
+			disconnected: false,
 			ttlMs: null,
 			placement: null,
 		},
@@ -98,6 +99,7 @@ test('findMatchingSecretForSetup resolves rotation targets by name and scope', (
 			createdAt: '2026-01-01T00:00:00.000Z',
 			updatedAt: '2026-01-01T00:00:00.000Z',
 			expiresAt: null,
+			disconnected: false,
 			ttlMs: null,
 			placement: null,
 		},
@@ -156,6 +158,7 @@ test('hydrateEditorStateForExistingSecret preserves policy unless the query sets
 		createdAt: '2026-01-01T00:00:00.000Z',
 		updatedAt: '2026-01-01T00:00:00.000Z',
 		expiresAt: '2026-12-01T00:00:00.000Z',
+		disconnected: false,
 		ttlMs: null,
 		placement: { headers: true } as const,
 	}

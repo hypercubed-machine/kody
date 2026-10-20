@@ -88,6 +88,7 @@ const usableRowQueries = [
 			FROM secret_entries e JOIN secret_buckets b ON b.id = e.bucket_id
 			WHERE b.user_id = ?${scopeSql}
 				AND e.deleted_at IS NULL AND b.deleted_at IS NULL
+				AND e.encrypted_value IS NOT NULL AND e.encrypted_value != ''
 				AND (e.expires_at IS NULL OR e.expires_at > ?)
 				AND (b.expires_at IS NULL OR b.expires_at > ?)${filter('e.id')}`
 		},

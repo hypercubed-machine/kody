@@ -31,6 +31,7 @@ import { filterValidApprovalHosts } from '#mcp/secrets/approval-host-shape.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 import {
 	deleteSecret,
+	disconnectSecret,
 	findSecret,
 	listSecrets,
 	renameSecret,
@@ -1801,6 +1802,8 @@ export async function saveAccountSecret(input: {
 			requestedPlacement !== undefined && credential == null
 				? requestedPlacement
 				: saved.placement,
+		// A successful save always stores a value, so the row is connected.
+		disconnected: false,
 		value,
 	}
 	return operationResult({
@@ -1842,6 +1845,43 @@ export async function deleteAccountSecret(input: {
 	}
 
 	return operationResult({ ok: true, deleted: true, secretId: currentId })
+}
+
+export async function disconnectAccountSecret(input: {
+	request: Request
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	fields: { currentId: string }
+}) {
+	const currentId = input.fields.currentId?.trim() || null
+	if (!currentId) {
+		return operationResult({ ok: false, error: 'Secret id is required.' }, 400)
+	}
+
+	const secret = parseAccountSecretId(currentId)
+	if (!secret || secret.scope === 'session') {
+		return operationResult({ ok: false, error: 'Invalid secret id.' }, 400)
+	}
+
+	const disconnected = await disconnectSecret({
+		env: input.env,
+		userId: ownerIdFromCaller({
+			request: input.user.request,
+			user: input.user.mcpUser,
+		}),
+		name: secret.name,
+		scope: secret.scope,
+		storageContext: getSecretContextForAccountSecret(secret),
+	})
+	if (!disconnected) {
+		return operationResult({ ok: false, error: 'Secret not found.' }, 404)
+	}
+
+	return operationResult({
+		ok: true,
+		disconnected: true,
+		secretId: currentId,
+	})
 }
 
 function readOptionalExpiresAt(body: object) {

@@ -61,6 +61,7 @@ function secretMetadata(
 		expiresAt: null,
 		ttlMs: null,
 		placement: null,
+		disconnected: false,
 		...overrides,
 	}
 }

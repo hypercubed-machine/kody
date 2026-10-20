@@ -44,6 +44,7 @@ const mockModule = vi.hoisted(() => ({
 		allowedHosts: [],
 		allowedPackages: [],
 		placement: null,
+		disconnected: false,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -58,6 +59,7 @@ const mockModule = vi.hoisted(() => ({
 			allowedHosts: input.allowedHosts,
 			allowedPackages: [],
 			placement: null,
+			disconnected: false,
 			createdAt: new Date(0).toISOString(),
 			updatedAt: new Date(0).toISOString(),
 			expiresAt: null,
@@ -87,6 +89,9 @@ const mockModule = vi.hoisted(() => ({
 		placement: null,
 	})),
 	deleteSecret: vi.fn<typeof secretsService.deleteSecret>(async () => false),
+	disconnectSecret: vi.fn<typeof secretsService.disconnectSecret>(
+		async () => false,
+	),
 	renameSecret: vi.fn<typeof secretsService.renameSecret>(async (input) => ({
 		name: input.toName,
 		scope: input.scope,
@@ -95,6 +100,7 @@ const mockModule = vi.hoisted(() => ({
 		allowedHosts: [],
 		allowedPackages: [],
 		placement: null,
+		disconnected: false,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -124,6 +130,7 @@ const mockModule = vi.hoisted(() => ({
 		allowedHosts: [],
 		allowedPackages: input.allowedPackages,
 		placement: null,
+		disconnected: false,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -288,6 +295,9 @@ vi.mock('#mcp/secrets/service.ts', () => ({
 		mockModule.resolveSecret(...args),
 	deleteSecret: (...args: Parameters<typeof secretsService.deleteSecret>) =>
 		mockModule.deleteSecret(...args),
+	disconnectSecret: (
+		...args: Parameters<typeof secretsService.disconnectSecret>
+	) => mockModule.disconnectSecret(...args),
 	renameSecret: (...args: Parameters<typeof secretsService.renameSecret>) =>
 		mockModule.renameSecret(...args),
 	findSecret: (...args: Parameters<typeof secretsService.findSecret>) =>
@@ -425,6 +435,7 @@ function makeSecret(name: string, overrides: Record<string, unknown> = {}) {
 		allowedHosts: [] as Array<string>,
 		allowedPackages: [] as Array<string>,
 		placement: null,
+		disconnected: false,
 		createdAt: epoch,
 		updatedAt: epoch,
 		expiresAt: null,
@@ -468,6 +479,7 @@ test('account secrets save reports rename cleanup failure without failing the sa
 		allowedHosts: [],
 		allowedPackages: [],
 		placement: null,
+		disconnected: false,
 		createdAt: epoch,
 		updatedAt: epoch,
 		expiresAt: null,

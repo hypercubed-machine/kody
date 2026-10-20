@@ -44,6 +44,7 @@ const mockModule = vi.hoisted(() => ({
 		allowedHosts: [],
 		allowedPackages: [],
 		placement: null,
+		disconnected: false,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -58,6 +59,7 @@ const mockModule = vi.hoisted(() => ({
 			allowedHosts: input.allowedHosts,
 			allowedPackages: [],
 			placement: null,
+			disconnected: false,
 			createdAt: new Date(0).toISOString(),
 			updatedAt: new Date(0).toISOString(),
 			expiresAt: null,
@@ -87,6 +89,9 @@ const mockModule = vi.hoisted(() => ({
 		placement: null,
 	})),
 	deleteSecret: vi.fn<typeof secretsService.deleteSecret>(async () => false),
+	disconnectSecret: vi.fn<typeof secretsService.disconnectSecret>(
+		async () => false,
+	),
 	renameSecret: vi.fn<typeof secretsService.renameSecret>(async (input) => ({
 		name: input.toName,
 		scope: input.scope,
@@ -95,6 +100,7 @@ const mockModule = vi.hoisted(() => ({
 		allowedHosts: [],
 		allowedPackages: [],
 		placement: null,
+		disconnected: false,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -124,6 +130,7 @@ const mockModule = vi.hoisted(() => ({
 		allowedHosts: [],
 		allowedPackages: input.allowedPackages,
 		placement: null,
+		disconnected: false,
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
 		expiresAt: null,
@@ -284,6 +291,9 @@ vi.mock('#mcp/secrets/service.ts', () => ({
 		mockModule.resolveSecret(...args),
 	deleteSecret: (...args: Parameters<typeof secretsService.deleteSecret>) =>
 		mockModule.deleteSecret(...args),
+	disconnectSecret: (
+		...args: Parameters<typeof secretsService.disconnectSecret>
+	) => mockModule.disconnectSecret(...args),
 	renameSecret: (...args: Parameters<typeof secretsService.renameSecret>) =>
 		mockModule.renameSecret(...args),
 	findSecret: (...args: Parameters<typeof secretsService.findSecret>) =>
@@ -428,6 +438,7 @@ function makeSecret(name: string, overrides: Record<string, unknown> = {}) {
 		allowedHosts: [] as Array<string>,
 		allowedPackages: [] as Array<string>,
 		placement: null,
+		disconnected: false,
 		createdAt: epoch,
 		updatedAt: epoch,
 		expiresAt: null,
@@ -1129,6 +1140,31 @@ test('account secrets API loads selected secret values and deletes the selected 
 	)
 })
 
+test('account secrets disconnect clears the value and keeps the record', async () => {
+	const call = createHandler()
+	mockModule.disconnectSecret.mockResolvedValueOnce(true)
+
+	const disconnectResponse = await call(
+		postRequest({ action: 'disconnect', currentId: 'user::::myApiKey' }),
+	)
+
+	expect(disconnectResponse.status).toBe(200)
+	expect(disconnectResponse.data).toMatchObject({
+		ok: true,
+		disconnected: true,
+		secretId: 'user::::myApiKey',
+	})
+	expect(mockModule.disconnectSecret).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('stable-user-1'),
+			name: 'myApiKey',
+			scope: 'user',
+			storageContext: userStorage,
+		}),
+	)
+	expect(mockModule.deleteSecret).not.toHaveBeenCalled()
+})
+
 test('account secrets save returns the new secret after a successful write', async () => {
 	mockModule.listSavedPackagesByUserId.mockResolvedValue([])
 	mockModule.listPackageSecretsByPackageIds.mockResolvedValue(new Map())
@@ -1605,6 +1641,7 @@ test('account secrets save outcome uses the saved record metadata', async () => 
 		allowedHosts: [],
 		allowedPackages: [],
 		placement: null,
+		disconnected: false,
 		createdAt: savedAt,
 		updatedAt: savedAt,
 		expiresAt,

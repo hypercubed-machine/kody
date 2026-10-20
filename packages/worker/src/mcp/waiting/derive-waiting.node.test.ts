@@ -290,6 +290,7 @@ const apiKeySecret: ListedSecret = {
 	expiresAt: null,
 	ttlMs: 60,
 	placement: null,
+	disconnected: false,
 }
 
 function stubEnv(stamps?: Parameters<typeof createStubDb>[0]) {

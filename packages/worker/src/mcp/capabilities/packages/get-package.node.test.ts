@@ -277,6 +277,7 @@ test('getPackageCapability includes package-scoped secret metadata as FYI', asyn
 						expiresAt: null,
 						ttlMs: null,
 						placement: null,
+						disconnected: false,
 					},
 				],
 			],
@@ -298,6 +299,7 @@ test('getPackageCapability includes package-scoped secret metadata as FYI', asyn
 			expires_at: null,
 			ttl_ms: null,
 			placement: null,
+			disconnected: false,
 		},
 	])
 	expect(result.package_secrets[0]).not.toHaveProperty('value')

@@ -44,6 +44,8 @@ export function credentialStatusLabel(status: CredentialListItemStatus) {
 			return 'Needs attention'
 		case 'disabled':
 			return 'Disabled'
+		case 'disconnected':
+			return 'Disconnected'
 		default: {
 			const exhaustive: never = status
 			return exhaustive

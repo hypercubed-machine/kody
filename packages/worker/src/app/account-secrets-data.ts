@@ -54,6 +54,8 @@ type AccountSecretListItem = {
 	ttlMs: number | null
 	/** Null means anywhere. */
 	placement: CredentialFillPlacementView | null
+	/** True when Disconnect cleared the value; the row and placement remain. */
+	disconnected: boolean
 }
 
 type AccountSecretDetail = AccountSecretListItem & {
@@ -552,6 +554,7 @@ function toAccountSecretListItem(
 		expiresAt: string | null
 		ttlMs: number | null
 		placement?: AccountSecretListItem['placement']
+		disconnected?: boolean
 	},
 	packageTitles: Map<string, string>,
 ) {
@@ -580,6 +583,7 @@ function toAccountSecretListItem(
 		expiresAt: secret.expiresAt,
 		ttlMs: secret.ttlMs,
 		placement: secret.placement ?? null,
+		disconnected: secret.disconnected === true,
 	} satisfies AccountSecretListItem
 }
 

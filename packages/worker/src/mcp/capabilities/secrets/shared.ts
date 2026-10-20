@@ -31,6 +31,11 @@ export const secretMetadataSchema = z.object({
 		.describe(
 			'Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. The gateway does not enforce this yet.',
 		),
+	disconnected: z
+		.boolean()
+		.describe(
+			'True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row.',
+		),
 })
 
 export function toSecretCapabilityOutput(secret: SecretMetadata) {
@@ -46,6 +51,7 @@ export function toSecretCapabilityOutput(secret: SecretMetadata) {
 		expires_at: secret.expiresAt,
 		ttl_ms: secret.ttlMs,
 		placement: secret.placement,
+		disconnected: secret.disconnected,
 	}
 }
 
