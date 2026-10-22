@@ -99,19 +99,13 @@ const __kodyStringStartsWith = String.prototype.startsWith;
 const __kodyErrorCtor = Error;
 const __kodyEncodeURIComponent = encodeURIComponent;
 const __kodyPackageBindingStorage = new AsyncLocalStorage();
-// Prefer the instance getStore (works for real ALS and the local-execute
-// frozen storage view). Captured at init so later forgeries on the object
+// Prefer the instance getStore (works for real ALS and host-provided
+// storage objects). Captured at init so later forgeries on the object
 // are ignored; Reflect.apply keeps this-binding correct.
 const __kodyRuntimeGetStore = __kodyRuntimeStorage.getStore;
 const __kodyCapturedGlobalFetch = __globalAny.fetch;
 function __kodyGetRuntimeStore() {
 	return __kodyReflectApply(__kodyRuntimeGetStore, __kodyRuntimeStorage, []);
-}
-// GHSA-5fv3: static import wrappers no longer enter any secret authority.
-// Kept as a pass-through so the metering wrapper on main merges unchanged;
-// it must never open authority around importer-reachable code.
-function __kodyRunWithSecretAuthority(_packageId, callback) {
-	return callback();
 }
 // Intrinsic AsyncFunction prototype — never read target.constructor (package
 // code can null or forge it). Used only to choose async vs sync handling.
@@ -763,9 +757,12 @@ function __kodyRecordStaticPackageCall(
 // pass through unchanged; function exports keep their identity semantics
 // (arguments, this, return values, thrown errors, properties, construct)
 // behind a transparent Proxy whose only addition is a non-blocking usage
-// event per call. [[Call]] records usage. [[Construct]] is not metered
-// (construction stays a transparent \`new\`), but it still runs under the
-// stamp ALS so constructor-side fetch / kody.* keep the imported identity.
+// event per call. [[Call]] records usage. [[Construct]] is not metered and
+// stays a transparent \`new\`. The wrapper never grants package identity:
+// the id only routes metering (GHSA-5fv3-qv7j-rqf5). Code inside the export
+// acts as its own package through that package's module-bound helpers, and
+// any callback it receives from the importer runs with the importer's
+// identity, not the export's.
 // Re-export chains that wrap an already-metered proxy record once at the
 // innermost layer (see __kodyMeteredStaticPackageExports), with the
 // outermost import id as fallbackPackageId for older artifact grants.
@@ -773,9 +770,7 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 	if (typeof exportValue !== 'function') return exportValue;
 	const proxy = new Proxy(exportValue, {
 		construct(target, argumentsList, newTarget) {
-			return __kodyRunWithSecretAuthority(packageId, () =>
-				Reflect.construct(target, argumentsList, newTarget),
-			);
+			return Reflect.construct(target, argumentsList, newTarget);
 		},
 		apply(target, thisArg, argumentsList) {
 			const startedAtMs = Date.now();
@@ -801,29 +796,23 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 				targetIsMetered
 					? __kodyStaticCallChainAls.run({ outerPackageId }, callback)
 					: __kodyStaticCallChainAls.run(null, callback);
-			// Async callees must be awaited inside ALS.run so the stamp
-			// survives awaits in the callee body (workerd loses ALS when the
+			// Async callees must be awaited inside ALS.run so the call-chain
+			// store survives awaits in the callee body (workerd loses ALS when the
 			// sync run() callback only *returns* a Promise). Sync callees
 			// stay synchronous — return-value detection cannot both preserve
 			// sync returns and run Reflect.apply inside async ALS, so we key
 			// off the intrinsic AsyncFunction prototype (not constructor.name).
 			if (Object.getPrototypeOf(target) === __kodyAsyncFunctionPrototype) {
-				return __kodyRunWithSecretAuthority(packageId, async () =>
-					runWithCallChain(async () => {
-						try {
-							const value = await Reflect.apply(
-								target,
-								thisArg,
-								argumentsList,
-							);
-							recordOutcome('success');
-							return value;
-						} catch (error) {
-							recordOutcome('error', __kodyStaticCallErrorName(error));
-							throw error;
-						}
-					}),
-				);
+				return runWithCallChain(async () => {
+					try {
+						const value = await Reflect.apply(target, thisArg, argumentsList);
+						recordOutcome('success');
+						return value;
+					} catch (error) {
+						recordOutcome('error', __kodyStaticCallErrorName(error));
+						throw error;
+					}
+				});
 			}
 			const invoke = () =>
 				runWithCallChain(() => {
@@ -853,7 +842,7 @@ export function __kodyMeterStaticPackageExport(packageId, exportValue) {
 					recordOutcome('success');
 					return result;
 				});
-			return __kodyRunWithSecretAuthority(packageId, invoke);
+			return invoke();
 		},
 	});
 	__kodyMeteredStaticPackageExports.add(proxy);
@@ -1098,8 +1087,9 @@ export function parsePackageRuntimeModulePathPackageId(modulePath: string) {
  * from the shared runtime. `packageStorage`, `packageSecrets`, `default`, and
  * `KodyRuntime` are added per facade. Everything else the shared runtime
  * exports (stamp, bound-secret, bound-storage, and metering helpers) is
- * bundler-internal: it can enter secret authority for any package id, so
- * package-facing modules must list exports explicitly, never `export *`.
+ * bundler-internal: the bound creators act as whatever package id they are
+ * handed, so package-facing modules must list exports explicitly, never
+ * `export *`.
  */
 const kodyRuntimeSharedExportNames = [
 	'kody',

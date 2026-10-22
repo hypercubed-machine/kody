@@ -8,7 +8,7 @@ import {
 	serializeAuthenticatedFetchResponse,
 	type CapabilityProxyAuthenticatedFetchResult,
 } from './capability-proxy-authenticated-fetch.ts'
-import { authorizeLocalExecuteOwnedPackageId } from './capability-proxy-package-grants.ts'
+import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
 import { type ApiInvocationContext } from './context.ts'
 import { invalidRequest } from './errors.ts'
 
@@ -19,8 +19,8 @@ import { invalidRequest } from './errors.ts'
  * execute, so secret plaintext never enters local workerd and missing
  * secrets fail closed before any third-party request.
  *
- * Optional `packageId` is a client stamp from local workerd. Origin verifies
- * `package:execute`, then passes it as a `claimed` package stamp: it binds
+ * Optional `packageId` is the package graph's signed binding from local
+ * workerd (never a bare id). Origin verifies it and `package:execute`, then passes it as a `claimed` package stamp: it binds
  * package-scoped secrets / package-limited integrations, but the actor still
  * needs `secret:use` / `integration:use`. Only attested packages skip Use.
  *
@@ -143,12 +143,12 @@ export async function runCapabilityProxyGatewayFetch(input: {
 	const call = parseCapabilityProxyGatewayFetchArgs(input.args)
 	const orgUserId = ownerIdFromCaller(input.ctx.callerContext)
 	const stampedPackageId = call.packageId
-		? await authorizeLocalExecuteOwnedPackageId({
+		? await authorizeLocalExecutePackageBinding({
 				db: input.ctx.env.APP_DB,
 				env: input.ctx.env,
 				request: input.ctx.callerContext.request,
 				orgUserId,
-				packageId: call.packageId,
+				packageBinding: call.packageId,
 			})
 		: null
 	const existingStorage = input.ctx.callerContext.storageContext

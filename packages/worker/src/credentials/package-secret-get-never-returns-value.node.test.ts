@@ -14,9 +14,9 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { secretAuthorityArgName } from '#mcp/secrets/secret-authority.ts'
 import * as secretService from '#mcp/secrets/service.ts'
 import { createCapabilityProxyPackageHostTools } from '#worker/open-api/capability-proxy-package-grants.ts'
+import { signLocalExecutePackageBinding } from '#worker/package-runtime/local-execute-package-binding.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
@@ -193,7 +193,16 @@ async function setup() {
 				...(access ? { access } : {}),
 			},
 		})
-	return { env, packageId, callerContext, resolve }
+	// CapabilityProxy takes the package graph's signed binding, never the id.
+	const packageBinding = await signLocalExecutePackageBinding({
+		env,
+		packageId,
+		subject: {
+			org: orgId,
+			actor: callerContext.request?.actor?.userId ?? null,
+		},
+	})
+	return { env, packageId, packageBinding, callerContext, resolve }
 }
 
 const aliases = [...Object.keys(values), 'GOOGLE', 'UNKNOWN']
@@ -284,7 +293,7 @@ test('packageSecrets.has answers from metadata when ciphertext cannot decrypt', 
 	await expect(
 		tools.packageSecretHas({
 			alias: 'SIGNING_KEY',
-			[secretAuthorityArgName]: t.packageId,
+			packageId: t.packageBinding,
 		}),
 	).resolves.toEqual({ has: true })
 })
@@ -298,12 +307,10 @@ test('the local-execute capability proxy returns only opaque refs to package cod
 	if (!tools.packageSecretGet) throw new Error('packageSecretGet missing')
 	const get = tools.packageSecretGet
 	await expect(
-		get({ alias: 'HOSTED_KEY', [secretAuthorityArgName]: t.packageId }),
+		get({ alias: 'HOSTED_KEY', packageId: t.packageBinding }),
 	).resolves.toEqual({ value: '{{secret:HOSTED_KEY|scope=user}}' })
 	for (const alias of aliases) {
-		const outcome = await settle(
-			get({ alias, [secretAuthorityArgName]: t.packageId }),
-		)
+		const outcome = await settle(get({ alias, packageId: t.packageBinding }))
 		expectNoPlaintext(outcome.ok ? outcome.result : outcome.error)
 	}
 })

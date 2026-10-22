@@ -1,5 +1,6 @@
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { loadLocalExecuteRuntimeSupport } from '#worker/local-execute-runtime-support-load.ts'
+import { signLocalExecutePackageBindings } from './local-execute-package-binding.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
 import { collectDynamicImportExpressionNodes } from './import-specifiers.ts'
 import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
@@ -83,6 +84,13 @@ export async function buildLocalExecutePackageGraph(input: {
 	env: Env
 	baseUrl: string
 	userId: string
+	/**
+	 * Org actor the CLI authenticated as. Each package in the graph gets a
+	 * binding signed for this org and actor; the shim sends that binding in
+	 * place of the bare package id, so CapabilityProxy can tell which package
+	 * a call comes from without trusting sandbox code.
+	 */
+	actorUserId: string | null
 	code: string
 }): Promise<LocalExecutePackageGraph> {
 	assertNoLiteralDynamicSavedPackageImports(input.code)
@@ -256,6 +264,40 @@ export async function buildLocalExecutePackageGraph(input: {
 		if (rewritten.rewritten) {
 			modulesByName.set(modulePath, rewritten.source)
 		}
+	}
+
+	// Sign one binding per package this graph serves and embed them in the
+	// primary shim (module-private, never exported). Nested runtime copies
+	// re-export the primary, so they share its bindings.
+	const graphPackageIds = new Set<string>([
+		...packageIdsByPrefix.values(),
+		...packageIdByModulePath.values(),
+	])
+	for (const modulePath of modulesByName.keys()) {
+		const packageRuntimeId = parsePackageRuntimeModulePathPackageId(modulePath)
+		if (packageRuntimeId) graphPackageIds.add(packageRuntimeId)
+	}
+	// Published bundles can inline other packages' facades; their ids come
+	// from bundler provenance (loaded rows and recorded dependencies), never
+	// from strings in module source.
+	for (const loaded of prepared.packages.values()) {
+		graphPackageIds.add(loaded.row.id)
+	}
+	for (const dependency of prepared.publishedArtifactDependencies) {
+		if (dependency.packageId) graphPackageIds.add(dependency.packageId)
+	}
+	const packageBindings = await signLocalExecutePackageBindings({
+		env: input.env,
+		packageIds: graphPackageIds,
+		subject: { org: input.userId, actor: input.actorUserId },
+	})
+	if (modulesByName.has(primaryRuntimePath) || packageBindings.size > 0) {
+		modulesByName.set(
+			primaryRuntimePath,
+			createLocalExecuteRuntimeShimSource(primaryRuntimePath, {
+				packageBindings: Object.fromEntries(packageBindings),
+			}),
+		)
 	}
 
 	const modules = [...modulesByName.entries()]

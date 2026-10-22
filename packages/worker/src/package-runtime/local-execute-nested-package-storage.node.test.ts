@@ -9,6 +9,7 @@ import {
 	createSavedPackageRecord,
 	createTemporaryModuleGraph,
 } from '#worker/test-support/module-graph.ts'
+import { verifyLocalExecutePackageBinding } from './local-execute-package-binding.ts'
 import { buildLocalExecutePackageGraph } from './local-execute-package-graph.ts'
 import { buildKodyImportableModuleBundle } from './module-graph-bundle-builders.ts'
 import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
@@ -50,7 +51,11 @@ vi.mock('./published-bundle-artifacts.ts', async () => {
 	}
 })
 
-const env = { APP_DB: {}, REPO_SESSION: {} } as Env
+const env = {
+	APP_DB: {},
+	REPO_SESSION: {},
+	SECRET_STORE_KEY: 'test-secret-store-key',
+} as unknown as Env
 const baseUrl = 'https://heykody.dev'
 const userId = ownerIdFromStored('user-1')
 
@@ -215,7 +220,11 @@ async function buildLegacyInlinedRuntimeArtifact(pkg: FixturePackage) {
 
 function artifactHit(
 	pkg: FixturePackage,
-	bundle: { mainModule: string; modules: Record<string, unknown> },
+	bundle: {
+		mainModule: string
+		modules: Record<string, unknown>
+		dependencies?: Array<unknown>
+	},
 ) {
 	return {
 		row: { id: `artifact-${pkg.kodyId}` },
@@ -228,7 +237,7 @@ function artifactHit(
 			entryPoint: pkg.entryPoint,
 			mainModule: bundle.mainModule,
 			modules: bundle.modules,
-			dependencies: [],
+			dependencies: bundle.dependencies ?? [],
 			packageContext: {
 				packageId: pkg.id,
 				kodyId: pkg.kodyId,
@@ -339,20 +348,15 @@ function createFakePackageStorageBridge() {
 		}
 		return existing
 	}
-	const authorityPackageId = (input: {
-		packageId?: unknown
-		__kodySecretAuthorityPackageId?: unknown
-	}) => input.__kodySecretAuthorityPackageId ?? input.packageId
 	const bridge = async (path: Array<string>, args: Array<unknown>) => {
 		const input = (args[0] ?? {}) as {
 			packageId?: unknown
-			__kodySecretAuthorityPackageId?: unknown
 			key?: string
 			value?: unknown
 			alias?: string
 		}
 		const name = path.join('.')
-		const packageId = authorityPackageId(input)
+		const packageId = input.packageId
 		calls.push({ path: name, packageId })
 		switch (name) {
 			case 'kody.packageStorageGet':
@@ -373,7 +377,7 @@ function createFakePackageStorageBridge() {
 	return { bridge, buckets, calls }
 }
 
-test('execute --local binds packageStorage and packageSecrets per package identity through nested imports of legacy artifacts', async () => {
+test('execute --local legacy inlined runtime copies fail closed instead of claiming a package by id (GHSA-5fv3-qv7j-rqf5)', async () => {
 	vi.clearAllMocks()
 	const artifacts = new Map<string, ReturnType<typeof artifactHit>>()
 	installRegistry(artifacts)
@@ -408,6 +412,7 @@ export default async function main(params) { return await planDay(params) }`
 		env,
 		baseUrl,
 		userId,
+		actorUserId: 'actor-1',
 		code,
 	})
 
@@ -431,32 +436,107 @@ export default async function main(params) { return await planDay(params) }`
 		const entry = (await moduleGraph.importModule('entry.js')) as {
 			run: (params: unknown) => Promise<unknown>
 		}
-		await expect(entry.run({ forecast: { high: 81 } })).resolves.toEqual({
-			forecast: { high: 81 },
-			config: { synced: true },
-			forecastHasWakeToken: false,
-			shadesHasWakeToken: false,
-		})
+		// The legacy copy looks packageStorage up in the shared runtime store
+		// by package id. Local runs no longer answer that lookup (hosted
+		// answers it only as the run's own package), so any module that names
+		// a package id there gets nothing.
+		await expect(entry.run({ forecast: { high: 81 } })).rejects.toThrow(
+			/packageStorage\(\) is not available/,
+		)
 	} finally {
 		await moduleGraph.cleanup()
 		Reflect.deleteProperty(globalThis, '__kodyTestBridge')
 		Reflect.set(globalThis, runtimeStorageSymbol, previousStorage)
 	}
 
-	expect(Object.fromEntries(buckets.get(forecastPackage.id) ?? [])).toEqual({
+	expect(buckets.size).toBe(0)
+	expect(calls).toEqual([])
+})
+
+test('execute --local sends each nested package its own signed binding, never a bare id (GHSA-5fv3-qv7j-rqf5)', async () => {
+	vi.clearAllMocks()
+	const artifacts = new Map<string, ReturnType<typeof artifactHit>>()
+	installRegistry(artifacts)
+	for (const pkg of [forecastPackage, shadesPackage]) {
+		const bundle = await buildKodyImportableModuleBundle({
+			env,
+			baseUrl,
+			userId,
+			sourceFiles: sourceFilesFor(pkg),
+			entryPoint: pkg.entryPoint,
+			rootPackageId: pkg.id,
+		})
+		artifacts.set(pkg.sourceId, artifactHit(pkg, bundle))
+	}
+
+	const code = `import planDay from 'kody:@acme/shades/plan-day'
+export default async function main(params) { return await planDay(params) }`
+	const graph = await buildLocalExecutePackageGraph({
+		env,
+		baseUrl,
+		userId,
+		actorUserId: 'actor-1',
+		code,
+	})
+	const files: Record<string, string> = {
+		'kody:runtime': createCliHostRuntimeSource(),
+		'entry.js': createCliEntrySource(),
+		'main.js': code.replace(
+			"'kody:@acme/shades/plan-day'",
+			"'./kody:@acme/shades/plan-day'",
+		),
+	}
+	for (const module of graph.modules) files[module.name] = module.esModule
+
+	const { bridge, buckets, calls } = createFakePackageStorageBridge()
+	const runtimeStorageSymbol = Symbol.for('kody.runtimeStorage')
+	const previousStorage = Reflect.get(globalThis, runtimeStorageSymbol)
+	Reflect.set(globalThis, runtimeStorageSymbol, new AsyncLocalStorage())
+	Reflect.set(globalThis, '__kodyTestBridge', bridge)
+	const moduleGraph = await createTemporaryModuleGraph(files)
+	let result: unknown
+	try {
+		const entry = (await moduleGraph.importModule('entry.js')) as {
+			run: (params: unknown) => Promise<unknown>
+		}
+		result = await entry.run({ forecast: { high: 81 } })
+	} finally {
+		await moduleGraph.cleanup()
+		Reflect.deleteProperty(globalThis, '__kodyTestBridge')
+		Reflect.set(globalThis, runtimeStorageSymbol, previousStorage)
+	}
+
+	expect(result).toEqual({
 		forecast: { high: 81 },
-	})
-	expect(Object.fromEntries(buckets.get(shadesPackage.id) ?? [])).toEqual({
 		config: { synced: true },
+		forecastHasWakeToken: false,
+		shadesHasWakeToken: false,
 	})
-	expect([...buckets.keys()].sort()).toEqual(
-		[forecastPackage.id, shadesPackage.id].sort(),
+	expect(calls.length).toBeGreaterThan(0)
+	for (const call of calls) {
+		expect(String(call.packageId)).toMatch(/^kpb1\./)
+	}
+	const subject = { org: userId, actor: 'actor-1' }
+	const verify = (binding: unknown) =>
+		verifyLocalExecutePackageBinding({
+			env,
+			token: binding,
+			subject,
+		})
+	const secretChecks = await Promise.all(
+		calls
+			.filter((call) => call.path === 'kody.packageSecretHas')
+			.map((call) => verify(call.packageId)),
 	)
-	expect(calls.every((call) => typeof call.packageId === 'string')).toBe(true)
-	const secretHasCalls = calls.filter(
-		(call) => call.path === 'kody.packageSecretHas',
+	expect(new Set(secretChecks)).toEqual(
+		new Set([forecastPackage.id, shadesPackage.id]),
 	)
-	expect(secretHasCalls.map((call) => call.packageId).sort()).toEqual(
-		[forecastPackage.id, shadesPackage.id].sort(),
-	)
+	const bucketsByPackage: Record<string, unknown> = {}
+	for (const [binding, rows] of buckets) {
+		bucketsByPackage[await verify(binding)] = Object.fromEntries(rows)
+	}
+	expect(bucketsByPackage).toEqual({
+		[forecastPackage.id]: { forecast: { high: 81 } },
+		[shadesPackage.id]: { config: { synced: true } },
+	})
 })

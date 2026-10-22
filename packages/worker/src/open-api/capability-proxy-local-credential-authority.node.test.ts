@@ -1,6 +1,8 @@
 /**
  * Real-boundary: CapabilityProxy (CLI execute --local) must not treat a
- * client-claimed package id as secret authority. A member with package:execute
+ * client-claimed package id as secret authority. Package identity arrives as
+ * a binding the package graph signed (GHSA-5fv3-qv7j-rqf5); a bare id is
+ * refused, and a valid binding still needs package:execute. A member with package:execute
  * on org package P but without secret:use / integration:use must not expand
  * org credentials by stamping P on gatewayFetch.
  */
@@ -26,6 +28,10 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { lookupSecretsThroughResolveSecret } from '#worker/test-support/secret-lookup.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import {
+	LocalExecutePackageBindingError,
+	signLocalExecutePackageBinding,
+} from '#worker/package-runtime/local-execute-package-binding.ts'
 import { runCapabilityProxyGatewayFetch } from './capability-proxy-gateway-fetch.ts'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
@@ -116,6 +122,7 @@ test('local CapabilityProxy package stamp does not skip secret:use / integration
 		APP_DB: db,
 		...userMeter.env,
 		COOKIE_SECRET: 'test-cookie-secret',
+		SECRET_STORE_KEY: 'test-secret-store-key',
 		// Opt out of credential-resolution audit writes (#3456).
 		SENTRY_ENVIRONMENT: 'test',
 	} as unknown as Env
@@ -153,6 +160,17 @@ test('local CapabilityProxy package stamp does not skip secret:use / integration
 		},
 	})
 
+	const bindingFor = (id: string) =>
+		signLocalExecutePackageBinding({
+			env,
+			packageId: id,
+			subject: {
+				org: ownerId,
+				actor: memberRequest.actor?.userId ?? null,
+			},
+		})
+	const packageBinding = await bindingFor(packageId)
+
 	const buildCtx = (request: typeof memberRequest) =>
 		({
 			env,
@@ -172,7 +190,7 @@ test('local CapabilityProxy package stamp does not skip secret:use / integration
 		ctx: buildCtx(memberRequest),
 		args: [
 			{
-				packageId,
+				packageId: packageBinding,
 				request: {
 					url: 'https://example.com/',
 					headers: {
@@ -192,7 +210,7 @@ test('local CapabilityProxy package stamp does not skip secret:use / integration
 		ctx: buildCtx(memberRequest),
 		args: [
 			{
-				packageId,
+				packageId: packageBinding,
 				request: {
 					url: 'https://example.com/',
 					headers: {
@@ -231,12 +249,56 @@ test('local CapabilityProxy package stamp does not skip secret:use / integration
 		null,
 		{ stamp: false },
 	)
+	const otherBinding = await bindingFor(otherPackageId)
+	const executeDenied = await runCapabilityProxyGatewayFetch({
+		ctx: buildCtx(memberRequest),
+		args: [
+			{
+				packageId: otherBinding,
+				request: {
+					url: 'https://example.com/',
+					headers: {
+						authorization: 'Bearer {{secret:orgEcho|scope=user}}',
+					},
+				},
+			},
+		],
+	}).then(
+		() => null,
+		(error: unknown) => error,
+	)
+	expect(executeDenied).toBeInstanceOf(AuthorizationError)
+	expect(String(executeDenied)).toMatch(/package:execute/)
+
+	// A bare package id is not package identity, even for a package the
+	// member can execute.
+	for (const claimed of [packageId, otherPackageId]) {
+		const rawDenied = await runCapabilityProxyGatewayFetch({
+			ctx: buildCtx(memberRequest),
+			args: [
+				{
+					packageId: claimed,
+					request: {
+						url: 'https://example.com/',
+						headers: {
+							authorization: 'Bearer {{secret:orgEcho|scope=user}}',
+						},
+					},
+				},
+			],
+		}).then(
+			() => null,
+			(error: unknown) => error,
+		)
+		expect(rawDenied).toBeInstanceOf(LocalExecutePackageBindingError)
+	}
+
 	await expect(
 		runCapabilityProxyGatewayFetch({
 			ctx: buildCtx(memberRequest),
 			args: [
 				{
-					packageId: otherPackageId,
+					packageId: otherBinding,
 					request: {
 						url: 'https://example.com/',
 						headers: {
@@ -286,7 +348,7 @@ test('local CapabilityProxy package stamp does not skip secret:use / integration
 			ctx: buildCtx(memberAfterGrant),
 			args: [
 				{
-					packageId,
+					packageId: packageBinding,
 					request: {
 						url: 'https://example.com/',
 						headers: {

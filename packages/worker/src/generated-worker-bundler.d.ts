@@ -27,6 +27,7 @@ declare module '*/node_modules/.kody-generated/local-execute-runtime-support.mjs
 	export const localExecuteHostRuntimeModuleName: 'kody:runtime'
 	export function createLocalExecuteRuntimeShimSource(
 		modulePath?: string,
+		options?: { packageBindings?: Record<string, string> },
 	): string
 	export function createLocalExecutePackageRuntimeModuleSource(
 		packageId: string,

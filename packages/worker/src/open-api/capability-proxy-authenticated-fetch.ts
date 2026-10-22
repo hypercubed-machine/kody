@@ -8,7 +8,7 @@ import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { buildKodyFns } from '#mcp/run-kody-registry.ts'
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { authorizeLocalExecuteOwnedPackageId } from './capability-proxy-package-grants.ts'
+import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
 import { type ApiInvocationContext } from './context.ts'
 import { invalidRequest } from './errors.ts'
 
@@ -18,8 +18,8 @@ import { invalidRequest } from './errors.ts'
  * `{{integration-token:…}}` through the same fetch gateway cloud execute uses,
  * then returns a JSON-safe response envelope the local runtime reconstructs.
  *
- * Optional `packageId` is a client stamp: origin verifies `package:execute`
- * when present, but never grants secret authority from it. Local credential
+ * Optional `packageId` is the package graph's signed binding (never a bare
+ * id): origin verifies the binding and `package:execute` when present, but never grants secret authority from it. Local credential
  * expansion requires `integration:use` / `secret:use` like ad-hoc; only cloud
  * bundler provenance may skip Use via package attachment.
  */
@@ -159,12 +159,12 @@ async function authorizeAuthenticatedFetchPackageId(input: {
 	ctx: ApiInvocationContext
 	packageId: string
 }) {
-	return await authorizeLocalExecuteOwnedPackageId({
+	return await authorizeLocalExecutePackageBinding({
 		db: input.ctx.env.APP_DB,
 		env: input.ctx.env,
 		request: input.ctx.callerContext.request,
 		orgUserId: ownerIdFromCaller(input.ctx.callerContext),
-		packageId: input.packageId,
+		packageBinding: input.packageId,
 	})
 }
 

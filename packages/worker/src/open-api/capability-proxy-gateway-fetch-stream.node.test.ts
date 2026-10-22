@@ -14,12 +14,12 @@ import {
 	runCapabilityProxyGatewayFetchStream,
 } from './capability-proxy-gateway-fetch-stream.ts'
 
-const authorizeLocalExecuteOwnedPackageId = vi.hoisted(() => vi.fn())
+const authorizeLocalExecutePackageBinding = vi.hoisted(() => vi.fn())
 const executeGatewayFetch = vi.hoisted(() => vi.fn())
 
 vi.mock('./capability-proxy-package-grants.ts', () => ({
-	authorizeLocalExecuteOwnedPackageId: (...args: Array<unknown>) =>
-		authorizeLocalExecuteOwnedPackageId(...args),
+	authorizeLocalExecutePackageBinding: (...args: Array<unknown>) =>
+		authorizeLocalExecutePackageBinding(...args),
 }))
 
 vi.mock('#mcp/fetch-gateway.ts', () => ({
@@ -125,7 +125,7 @@ test('JSON invoke of capabilityProxyGatewayFetch is refused', async () => {
 })
 
 test('runCapabilityProxyGatewayFetchStream forwards the body stream and returns the upstream Response', async () => {
-	authorizeLocalExecuteOwnedPackageId.mockResolvedValue('pkg-owned')
+	authorizeLocalExecutePackageBinding.mockResolvedValue('pkg-owned')
 	executeGatewayFetch.mockResolvedValue(
 		new Response('upstream-body', {
 			status: 201,
@@ -167,10 +167,10 @@ test('runCapabilityProxyGatewayFetchStream forwards the body stream and returns 
 	})
 	expect(response.status).toBe(201)
 	expect(await response.text()).toBe('upstream-body')
-	expect(authorizeLocalExecuteOwnedPackageId).toHaveBeenCalledWith(
+	expect(authorizeLocalExecutePackageBinding).toHaveBeenCalledWith(
 		expect.objectContaining({
 			orgUserId: ownerIdFromStored('user-1'),
-			packageId: 'pkg-owned',
+			packageBinding: 'pkg-owned',
 		}),
 	)
 	expect(executeGatewayFetch).toHaveBeenCalledTimes(1)

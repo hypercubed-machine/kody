@@ -5,7 +5,7 @@ import {
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { authorizeLocalExecuteOwnedPackageId } from './capability-proxy-package-grants.ts'
+import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
 import { type ApiInvocationContext } from './context.ts'
 import { ApiError, invalidRequest } from './errors.ts'
 import { requireLocalExecuteHttpPrincipal } from './native-operation-helpers.ts'
@@ -117,12 +117,12 @@ export async function runCapabilityProxyGatewayFetchStream(input: {
 	)
 	const orgUserId = ownerIdFromCaller(input.ctx.callerContext)
 	const stampedPackageId = call.packageId
-		? await authorizeLocalExecuteOwnedPackageId({
+		? await authorizeLocalExecutePackageBinding({
 				db: input.ctx.env.APP_DB,
 				env: input.ctx.env,
 				request: input.ctx.callerContext.request,
 				orgUserId,
-				packageId: call.packageId,
+				packageBinding: call.packageId,
 			})
 		: null
 	const existingStorage = input.ctx.callerContext.storageContext

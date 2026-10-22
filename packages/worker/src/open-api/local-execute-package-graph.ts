@@ -160,6 +160,7 @@ export const localExecutePackageGraphOperationDefinitions: Record<
 							env: ctx.env,
 							baseUrl: ctx.callerContext.baseUrl,
 							userId: ownerIdFromCaller(ctx.callerContext),
+							actorUserId: ctx.callerContext.request?.actor?.userId ?? null,
 							code,
 						}),
 				)

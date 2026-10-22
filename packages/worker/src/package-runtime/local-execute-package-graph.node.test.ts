@@ -50,9 +50,14 @@ beforeEach(() => {
 })
 
 const graphInput = {
-	env: { APP_DB: {}, REPO_SESSION: {} } as Env,
+	env: {
+		APP_DB: {},
+		REPO_SESSION: {},
+		SECRET_STORE_KEY: 'test-secret-store-key',
+	} as unknown as Env,
 	baseUrl: 'https://heykody.dev',
 	userId: ownerIdFromStored('user-1'),
+	actorUserId: 'actor-1',
 }
 
 const examplePackage = {
@@ -1133,17 +1138,24 @@ test('local isolate wraps globalThis.fetch so frozen copies still hop secrets', 
 	}
 })
 
-test('local bound gatewayFetch uses closed-over packageId; meter does not elevate (GHSA-5fv3)', async () => {
-	const shim = createLocalExecuteRuntimeShimSource(runtimeModulePath)
+test('local bound gatewayFetch sends its own package binding; meter does not elevate (GHSA-5fv3-qv7j-rqf5)', async () => {
+	const outerBinding = 'kpb1.outer-binding.sig'
+	const innerBinding = 'kpb1.inner-binding.sig'
+	const shim = createLocalExecuteRuntimeShimSource(runtimeModulePath, {
+		packageBindings: { 'pkg-outer': outerBinding, 'pkg-inner': innerBinding },
+	})
+	// No ambient authority channel is left in the local shim.
+	expect(shim).not.toContain('kody.getSecretAuthority')
+	expect(shim).not.toContain('__kodyGetSecretAuthority')
+	expect(shim).not.toContain('__kodyRunWithSecretAuthority')
+	expect(shim).not.toContain('__kodySecretAuthorityPackageId')
+	expect(shim).not.toContain('kody.localExecuteRuntimeStorageView')
 
-	const slotStart = shim.indexOf('const __kodyGetSecretAuthoritySymbol')
-	const slotEnd = shim.indexOf('// Pure placeholder builders')
-	expect(slotStart).toBeGreaterThan(-1)
-	expect(slotEnd).toBeGreaterThan(slotStart)
-	const slotSource = shim
-		.slice(slotStart, slotEnd)
-		.replaceAll(/^export /gm, '')
-		.replaceAll('/** @type {any} */ (globalThis)', 'globalThis')
+	const bindingsStart = shim.indexOf('const __kodyPackageBindings')
+	const bindingsEnd = shim.indexOf('// Pure placeholder builders')
+	expect(bindingsStart).toBeGreaterThan(-1)
+	expect(bindingsEnd).toBeGreaterThan(bindingsStart)
+	const bindingsSource = shim.slice(bindingsStart, bindingsEnd)
 
 	const meterStart = shim.indexOf(
 		'export function __kodyMeterStaticPackageExport',
@@ -1181,17 +1193,15 @@ test('local bound gatewayFetch uses closed-over packageId; meter does not elevat
 		__kodyCreatePackageBoundGatewayFetch,
 		__kodyGatewayFetch,
 		__kodyMeterStaticPackageExport,
-		__kodyGetSecretAuthority,
 	} = new Function(
 		'kody',
-		`${slotSource}
+		`${bindingsSource}
 ${gatewaySource}
 ${meterSource}
 return {
 	__kodyCreatePackageBoundGatewayFetch,
 	__kodyGatewayFetch,
 	__kodyMeterStaticPackageExport,
-	__kodyGetSecretAuthority,
 };`,
 	)(kody) as {
 		__kodyCreatePackageBoundGatewayFetch: (
@@ -1202,81 +1212,79 @@ return {
 			init?: RequestInit,
 		) => Promise<Response>
 		__kodyMeterStaticPackageExport: <T>(packageId: string, exportValue: T) => T
-		__kodyGetSecretAuthority: () => string | null
 	}
 
-	const outerBoundFetch =
-		__kodyCreatePackageBoundGatewayFetch('pkg-outer-friction')
-	const nestedBoundFetch = __kodyCreatePackageBoundGatewayFetch(
-		'pkg-nested-grok-bot',
-	)
-	// Metering only — no ambient secret authority (GHSA-5fv3).
-	const nestedWake = __kodyMeterStaticPackageExport(
-		'pkg-nested-grok-bot',
-		async () => {
-			expect(__kodyGetSecretAuthority()).toBeNull()
-			await Promise.resolve()
-			expect(__kodyGetSecretAuthority()).toBeNull()
-			// Calling through the outer closed-over binding stamps as outer.
-			await outerBoundFetch('https://api2.cursor.sh/automations/webhook/x', {
-				method: 'POST',
-				headers: {
-					authorization: 'Bearer {{secret:grokBotWake.nested|scope=package}}',
-				},
-			})
-			return { duringStamp: __kodyGetSecretAuthority() }
-		},
-	)
+	const outerBoundFetch = __kodyCreatePackageBoundGatewayFetch('pkg-outer')
+	const innerBoundFetch = __kodyCreatePackageBoundGatewayFetch('pkg-inner')
+	const unknownBoundFetch = __kodyCreatePackageBoundGatewayFetch('pkg-unknown')
+	// Metering only: calling the inner export through the meter does not make
+	// the outer closed-over fetch act as the inner package.
+	const innerExport = __kodyMeterStaticPackageExport('pkg-inner', async () => {
+		await Promise.resolve()
+		await outerBoundFetch('https://api.example.com/hook/x', {
+			method: 'POST',
+			headers: {
+				authorization: 'Bearer {{secret:innerWake|scope=package}}',
+			},
+		})
+		return 'done'
+	})
 
-	expect(__kodyGetSecretAuthority()).toBeNull()
-	const result = await nestedWake()
-	expect(result.duringStamp).toBeNull()
-	expect(__kodyGetSecretAuthority()).toBeNull()
+	await expect(innerExport()).resolves.toBe('done')
 	expect(gatewayCalls).toHaveLength(1)
 	expect(gatewayCalls[0]).toMatchObject({
-		packageId: 'pkg-outer-friction',
+		packageId: outerBinding,
 		request: {
-			url: 'https://api2.cursor.sh/automations/webhook/x',
+			url: 'https://api.example.com/hook/x',
 			headers: {
-				authorization: 'Bearer {{secret:grokBotWake.nested|scope=package}}',
+				authorization: 'Bearer {{secret:innerWake|scope=package}}',
 			},
 		},
 	})
 
 	gatewayCalls.length = 0
-	// Nested package identity comes from its own bound fetch, not meter ALS.
-	await nestedBoundFetch('https://api2.cursor.sh/automations/webhook/y', {
+	await innerBoundFetch('https://api.example.com/hook/y', {
 		method: 'POST',
 		headers: {
-			authorization: 'Bearer {{secret:grokBotWake.nested|scope=package}}',
+			authorization: 'Bearer {{secret:innerWake|scope=package}}',
 		},
 	})
-	expect(gatewayCalls).toHaveLength(1)
-	expect(gatewayCalls[0]).toMatchObject({
-		packageId: 'pkg-nested-grok-bot',
-	})
+	expect(gatewayCalls).toEqual([
+		expect.objectContaining({ packageId: innerBinding }),
+	])
 
+	// A package the graph did not bind sends no identity at all, and no hop
+	// ever carries a bare package id.
 	gatewayCalls.length = 0
-	await outerBoundFetch('https://api.example.com/v1', {
-		headers: {
-			authorization: 'Bearer {{secret:demoToken|scope=user}}',
-		},
+	await unknownBoundFetch('https://api.example.com/v1', {
+		headers: { authorization: 'Bearer {{secret:demoToken|scope=user}}' },
 	})
-	expect(gatewayCalls).toHaveLength(1)
-	expect(gatewayCalls[0]).toMatchObject({
-		packageId: 'pkg-outer-friction',
-	})
-
-	gatewayCalls.length = 0
 	await __kodyGatewayFetch('https://api.example.com/v1', {
-		headers: {
-			authorization: 'Bearer {{secret:demoToken|scope=user}}',
-		},
+		headers: { authorization: 'Bearer {{secret:demoToken|scope=user}}' },
 	})
-	expect(gatewayCalls).toHaveLength(1)
-	// Missing stamp + unbound fetch → no packageId on the hop (origin hides
-	// package-scoped secrets).
-	expect((gatewayCalls[0] as { packageId?: string }).packageId).toBeUndefined()
+	expect(gatewayCalls).toHaveLength(2)
+	for (const call of gatewayCalls) {
+		expect((call as { packageId?: string }).packageId).toBeUndefined()
+	}
+})
+
+test('local shim binding table ignores inherited and non-string keys', () => {
+	const shim = createLocalExecuteRuntimeShimSource(runtimeModulePath, {
+		packageBindings: { 'pkg-a': 'kpb1.a.sig', __proto__: 'kpb1.bad' } as Record<
+			string,
+			string
+		>,
+	})
+	const start = shim.indexOf('const __kodyPackageBindings')
+	const end = shim.indexOf('// Pure placeholder builders')
+	const lookup = new Function(
+		`${shim.slice(start, end)}
+return __kodyPackageBinding;`,
+	)() as (packageId: unknown) => string | null
+	expect(lookup('pkg-a')).toBe('kpb1.a.sig')
+	expect(lookup('toString')).toBeNull()
+	expect(lookup('__proto__')).toBeNull()
+	expect(lookup({ toString: () => 'pkg-a' })).toBeNull()
 })
 
 test('createLocalExecuteRuntimeShimSource uses a relative host import from path-like module names', () => {

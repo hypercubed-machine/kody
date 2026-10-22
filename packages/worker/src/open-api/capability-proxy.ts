@@ -30,7 +30,7 @@ import { runCapabilityProxyAuthenticatedFetch } from './capability-proxy-authent
 import { runCapabilityProxyGatewayFetch } from './capability-proxy-gateway-fetch.ts'
 import { runCapabilityProxyOauthClientCredentials } from './capability-proxy-oauth-client-credentials.ts'
 import {
-	authorizeLocalExecuteOwnedPackageId,
+	authorizeLocalExecutePackageBinding,
 	createCapabilityProxyPackageHostTools,
 } from './capability-proxy-package-grants.ts'
 
@@ -152,8 +152,9 @@ async function invokeCapability<T>(invoke: () => Promise<T> | T) {
 
 /**
  * Local execute has no host run, so handles bind to the CapabilityProxy
- * credential instead. A package stamp from local workerd is a claim until
- * `package:execute` on it holds.
+ * credential instead. A package stamp from local workerd is the package
+ * graph's signed binding, and stays a claim until `package:execute` on it
+ * holds. A bare package id is refused.
  */
 function createCapabilityProxyCredentialClientTools(
 	ctx: ApiInvocationContext,
@@ -168,12 +169,12 @@ function createCapabilityProxyCredentialClientTools(
 			const packageId = typeof requested === 'string' ? requested.trim() : ''
 			if (!packageId) return null
 			try {
-				return await authorizeLocalExecuteOwnedPackageId({
+				return await authorizeLocalExecutePackageBinding({
 					db: ctx.env.APP_DB,
 					env: ctx.env,
 					request,
 					orgUserId: ownerIdFromCaller(ctx.callerContext),
-					packageId,
+					packageBinding: packageId,
 				})
 			} catch (error) {
 				throw (

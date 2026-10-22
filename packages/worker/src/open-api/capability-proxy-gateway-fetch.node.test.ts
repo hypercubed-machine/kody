@@ -9,12 +9,12 @@ import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import { capabilityProxyAuthenticatedFetchMaxBodyBytes } from './capability-proxy-authenticated-fetch.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 
-const authorizeLocalExecuteOwnedPackageId = vi.hoisted(() => vi.fn())
+const authorizeLocalExecutePackageBinding = vi.hoisted(() => vi.fn())
 const executeGatewayFetch = vi.hoisted(() => vi.fn())
 
 vi.mock('./capability-proxy-package-grants.ts', () => ({
-	authorizeLocalExecuteOwnedPackageId: (...args: Array<unknown>) =>
-		authorizeLocalExecuteOwnedPackageId(...args),
+	authorizeLocalExecutePackageBinding: (...args: Array<unknown>) =>
+		authorizeLocalExecutePackageBinding(...args),
 }))
 
 vi.mock('#mcp/fetch-gateway.ts', () => ({
@@ -86,7 +86,7 @@ test('parseCapabilityProxyGatewayFetchArgs accepts valid requests and rejects mi
 })
 
 test('runCapabilityProxyGatewayFetch verifies package stamp but does not grant secret authority', async () => {
-	authorizeLocalExecuteOwnedPackageId.mockResolvedValue('pkg-owned')
+	authorizeLocalExecutePackageBinding.mockResolvedValue('pkg-owned')
 	executeGatewayFetch.mockImplementation(
 		async (input: { request: Request }) => {
 			expect(input.request.headers.get('authorization')).toBe(
@@ -124,10 +124,10 @@ test('runCapabilityProxyGatewayFetch verifies package stamp but does not grant s
 		],
 	})
 
-	expect(authorizeLocalExecuteOwnedPackageId).toHaveBeenCalledWith(
+	expect(authorizeLocalExecutePackageBinding).toHaveBeenCalledWith(
 		expect.objectContaining({
 			orgUserId: ownerIdFromStored('user-1'),
-			packageId: 'pkg-owned',
+			packageBinding: 'pkg-owned',
 		}),
 	)
 	expect(executeGatewayFetch).toHaveBeenCalledTimes(1)
@@ -214,7 +214,7 @@ test('runCapabilityProxyGatewayFetch without packageId does not grant secret aut
 		],
 	})
 
-	expect(authorizeLocalExecuteOwnedPackageId).not.toHaveBeenCalled()
+	expect(authorizeLocalExecutePackageBinding).not.toHaveBeenCalled()
 	const gatewayArg = executeGatewayFetch.mock.calls[0]?.[0] as {
 		props: {
 			grantedSecretAuthorityPackageIds?: Array<string>

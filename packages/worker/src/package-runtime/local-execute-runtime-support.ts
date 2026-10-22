@@ -25,6 +25,27 @@ export {
 export const localExecuteHostRuntimeModuleName = 'kody:runtime'
 
 /**
+ * Null-prototype object literal for the shim's package binding table. Keys
+ * that would act as prototype setters are dropped (package ids are UUIDs).
+ */
+function createPackageBindingsLiteral(bindings: Record<string, string>) {
+	const entries = Object.entries(bindings)
+		.filter(
+			([packageId, binding]) =>
+				packageId &&
+				packageId !== '__proto__' &&
+				typeof binding === 'string' &&
+				binding,
+		)
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(
+			([packageId, binding]) =>
+				`\t${JSON.stringify(packageId)}: ${JSON.stringify(binding)},`,
+		)
+	return `{\n\t__proto__: null,\n${entries.join('\n')}${entries.length ? '\n' : ''}}`
+}
+
+/**
  * Local workerd supplies `kody:runtime` (CapabilityProxy bridge). Stamped
  * package modules still import `.__kody_virtual__/runtime.js` / package-runtime
  * facades; this shim re-exports the host runtime and binds stamped
@@ -40,13 +61,22 @@ export const localExecuteHostRuntimeModuleName = 'kody:runtime'
  */
 export function createLocalExecuteRuntimeShimSource(
 	modulePath: string = runtimeModulePath,
+	options: {
+		/**
+		 * Package id to the binding the package graph signed for it. Origin
+		 * accepts only these in place of a package id.
+		 */
+		packageBindings?: Record<string, string>
+	} = {},
 ) {
+	const packageBindingsLiteral = createPackageBindingsLiteral(
+		options.packageBindings ?? {},
+	)
 	const hostRuntimeSpecifier = createRelativeImportSpecifier(
 		normalizeWorkspaceModulePath(modulePath),
 		localExecuteHostRuntimeModuleName,
 	)
 	return `
-import { AsyncLocalStorage } from "node:async_hooks";
 import {
 	kody,
 	packageContext,
@@ -66,45 +96,18 @@ export {
 	events,
 };
 
-// Secret authority is a synchronous, single-use slot opened only by
-// module-bound fetch / packageSecrets wrappers around the direct call into
-// the host dispatcher — never an ambient ALS scope (GHSA-5fv3). Same
-// contract as cloud runtime-source-modules. Intrinsics captured at shim
-// evaluation (before package code).
-const __kodyGetSecretAuthoritySymbol = Symbol.for("kody.getSecretAuthority");
-const __kodyReflectApply = Reflect.apply;
-let __kodySecretAuthoritySlot = null;
-function __kodyReadSecretAuthority() {
-	const current = __kodySecretAuthoritySlot;
-	__kodySecretAuthoritySlot = null;
-	return typeof current === "string" && current.trim() ? current.trim() : null;
-}
-function __kodyRunWithSecretAuthority(packageId, callback) {
-	const previous = __kodySecretAuthoritySlot;
-	__kodySecretAuthoritySlot = packageId;
-	try {
-		return callback();
-	} finally {
-		__kodySecretAuthoritySlot = previous;
-	}
-}
-{
-	const __globalAny = /** @type {any} */ (globalThis);
-	const existing = Object.getOwnPropertyDescriptor(
-		__globalAny,
-		__kodyGetSecretAuthoritySymbol,
-	);
-	if (!existing || existing.configurable) {
-		Object.defineProperty(__globalAny, __kodyGetSecretAuthoritySymbol, {
-			value: __kodyReadSecretAuthority,
-			writable: false,
-			configurable: false,
-			enumerable: false,
-		});
-	}
-}
-export function __kodyGetSecretAuthority() {
-	return __kodyReadSecretAuthority();
+// Package identity for CapabilityProxy calls (GHSA-5fv3-qv7j-rqf5). Origin
+// accepts only a binding the package graph signed for this org and actor,
+// never a bare package id, so code cannot claim a package by naming it. The
+// bindings stay module-private: package code reaches its own only through its
+// per-package \`kody:runtime\` facade, and nothing here is exported or put on
+// globalThis. The table is a null-prototype literal and lookups use plain
+// property reads, so patched intrinsics cannot observe it.
+const __kodyPackageBindings = ${packageBindingsLiteral};
+function __kodyPackageBinding(packageId) {
+	if (typeof packageId !== "string") return null;
+	const binding = __kodyPackageBindings[packageId];
+	return typeof binding === "string" ? binding : null;
 }
 
 // Pure placeholder builders — same shape as cloud execute helpers (including
@@ -210,10 +213,12 @@ export async function oauthClientCredentials(input) {
 }
 
 export function __kodyCreatePackageBoundOauthClientCredentials(packageId) {
+	const binding = __kodyPackageBinding(packageId);
 	return async function oauthClientCredentials(input) {
+		const { packageId: _ignored, ...rest } = input ?? {};
 		return await kody.oauthClientCredentials({
-			...(input ?? {}),
-			packageId,
+			...rest,
+			...(binding ? { packageId: binding } : {}),
 		});
 	};
 }
@@ -229,9 +234,11 @@ export const credential = __kodyCredentialRuntime.credential;
 export const credentials = __kodyCredentialRuntime.credentials;
 
 export function __kodyCreatePackageBoundCredentialRuntime(packageId) {
-	return __kodyCreateCredentialRuntime((name, args) =>
-		kody[name]({ ...(args ?? {}), packageId }),
-	);
+	const binding = __kodyPackageBinding(packageId);
+	return __kodyCreateCredentialRuntime((name, args) => {
+		const { packageId: _ignored, ...rest } = args ?? {};
+		return kody[name]({ ...rest, ...(binding ? { packageId: binding } : {}) });
+	});
 }
 
 const __kodyNullBodyStatuses = new Set([204, 205, 304]);
@@ -351,8 +358,9 @@ async function __kodyBodyToBytes(body) {
 }
 
 export function __kodyCreatePackageBoundAuthenticatedFetch(packageId) {
+	const binding = __kodyPackageBinding(packageId);
 	return async function createAuthenticatedFetch(providerName) {
-		return __kodyCreateAuthenticatedFetch(providerName, packageId);
+		return __kodyCreateAuthenticatedFetch(providerName, binding);
 	};
 }
 
@@ -360,7 +368,7 @@ export async function createAuthenticatedFetch(providerName) {
 	return __kodyCreateAuthenticatedFetch(providerName, null);
 }
 
-async function __kodyCreateAuthenticatedFetch(providerName, packageId) {
+async function __kodyCreateAuthenticatedFetch(providerName, packageBinding) {
 	const name = String(providerName ?? "").trim();
 	if (!name) {
 		throw new Error("Integration name is required.");
@@ -390,7 +398,7 @@ async function __kodyCreateAuthenticatedFetch(providerName, packageId) {
 		}
 		const result = await kody.authenticatedFetch({
 			providerName: name,
-			...(packageId ? { packageId } : {}),
+			...(packageBinding ? { packageId: packageBinding } : {}),
 			request: {
 				url,
 				method,
@@ -419,31 +427,18 @@ async function __kodyCreateAuthenticatedFetch(providerName, packageId) {
  * cloud execute. Non-secret requests use the captured native fetch (no 4 MiB
  * hop cap, no CapabilityProxy round-trip).
  *
- * Prefer the meter ALS stamp (imported package export) over the module-path
- * closed-over id so nested inlined callees stamp as themselves (kody#2876).
+ * Bound fetch sends the calling package's binding (never a bare id), so the
+ * gateway sees that package's identity and nothing else (GHSA-5fv3-qv7j-rqf5).
  */
-function __kodyResolveGatewayPackageId(fallbackPackageId) {
-	// Module-bound identity only (GHSA-5fv3). The sync authority slot is
-	// single-use for host take; do not prefer it over the closed-over
-	// package id here — bound fetch already passes its packageId. Peeking
-	// via take would clear a slot opened by a nested bound helper.
-	const fallback =
-		typeof fallbackPackageId === "string" ? fallbackPackageId.trim() : "";
-	return fallback || null;
-}
-
 export function __kodyCreatePackageBoundGatewayFetch(packageId) {
+	const binding = __kodyPackageBinding(packageId);
 	return async function gatewayFetch(input, init) {
-		const authority = __kodyResolveGatewayPackageId(packageId);
-		return __kodyRunWithSecretAuthority(authority, () =>
-			__kodyGatewayFetchCall(input, init, authority),
-		);
+		return __kodyGatewayFetchCall(input, init, binding);
 	};
 }
 
 export async function __kodyGatewayFetch(input, init) {
-	const authority = __kodyResolveGatewayPackageId(null);
-	return __kodyGatewayFetchCall(input, init, authority);
+	return __kodyGatewayFetchCall(input, init, null);
 }
 
 function __kodyHasPlaceholderText(value) {
@@ -691,7 +686,7 @@ function __kodyWithoutSecretResolutionHeader(headers) {
 	return stripped;
 }
 
-async function __kodyGatewayFetchCall(input, init, packageId) {
+async function __kodyGatewayFetchCall(input, init, packageBinding) {
 	// The resolution mode instructs the fetch gateway. It is never sent to the
 	// remote on a native fetch, and only the gateway hop carries it.
 	const resolutionHeader = __kodyReadSecretResolutionHeader(input, init);
@@ -914,7 +909,7 @@ async function __kodyGatewayFetchCall(input, init, packageId) {
 	if (streamingBody != null && !__kodyIsVerbatimBodyMode(resolutionMode)) {
 		if (typeof kody.gatewayFetchStream === "function") {
 			return __kodyGatewayFetchStreamCall({
-				...(packageId ? { packageId } : {}),
+				...(packageBinding ? { packageId: packageBinding } : {}),
 				request: {
 					url,
 					method,
@@ -995,7 +990,7 @@ async function __kodyGatewayFetchCall(input, init, packageId) {
 		bodyBytes.byteLength > __kodyGatewayFetchMaxBufferedBodyBytes
 	) {
 		return __kodyGatewayFetchStreamCall({
-			...(packageId ? { packageId } : {}),
+			...(packageBinding ? { packageId: packageBinding } : {}),
 			request: {
 				url,
 				method,
@@ -1009,7 +1004,7 @@ async function __kodyGatewayFetchCall(input, init, packageId) {
 	// same way as hosted (and so we never base64 a multipart body).
 	if (bodyBytes != null && __kodyIsMultipartType(headers["content-type"])) {
 		return __kodyGatewayFetchStreamCall({
-			...(packageId ? { packageId } : {}),
+			...(packageBinding ? { packageId: packageBinding } : {}),
 			request: {
 				url,
 				method,
@@ -1020,7 +1015,7 @@ async function __kodyGatewayFetchCall(input, init, packageId) {
 		});
 	}
 	const result = await kody.gatewayFetch({
-		...(packageId ? { packageId } : {}),
+		...(packageBinding ? { packageId: packageBinding } : {}),
 		request: {
 			url,
 			method,
@@ -1042,27 +1037,77 @@ async function __kodyGatewayFetchCall(input, init, packageId) {
 }
 
 export function __kodyCreatePackageBoundStorage(packageId) {
+	// The binding (not the id) goes on the wire; origin maps it back to the
+	// package after checking it was signed for this org and actor.
+	const binding = __kodyPackageBinding(packageId) ?? "";
 	return function packageStorage() {
 		return {
 			id: "package:" + encodeURIComponent(packageId),
 			get: async (key) =>
-				(await kody.packageStorageGet({ packageId, key })).value,
+				(await kody.packageStorageGet({ key, packageId: binding })).value,
 			list: async (options = {}) =>
-				await kody.packageStorageList({ ...options, packageId }),
+				await kody.packageStorageList({ ...options, packageId: binding }),
 			sql: async (query, params = []) =>
 				await kody.packageStorageSql({
-					packageId,
 					query,
 					params,
 					writable: true,
+					packageId: binding,
 				}),
 			set: async (key, value) =>
-				await kody.packageStorageSet({ packageId, key, value }),
+				await kody.packageStorageSet({ key, value, packageId: binding }),
 			delete: async (key) =>
-				await kody.packageStorageDelete({ packageId, key }),
-			clear: async () => await kody.packageStorageClear({ packageId }),
+				await kody.packageStorageDelete({ key, packageId: binding }),
+			clear: async () =>
+				await kody.packageStorageClear({ packageId: binding }),
 		};
 	};
+}
+
+// Same exports as the hosted per-package facade, so artifacts bundled against
+// it run locally. Package-scoped calls carry this package's binding (any
+// packageId the caller passes is replaced); every other call goes to the
+// run's own host dispatcher unchanged.
+const __kodyBindingScopedKodyCalls = new Set([
+	"packageStorageGet",
+	"packageStorageList",
+	"packageStorageSql",
+	"packageStorageSet",
+	"packageStorageDelete",
+	"packageStorageClear",
+	"packageSecretGet",
+	"packageSecretHas",
+]);
+
+export function __kodyCreatePackageBoundFetch(packageId) {
+	const binding = __kodyPackageBinding(packageId);
+	return function fetch(input, init) {
+		return __kodyGatewayFetchCall(input, init, binding);
+	};
+}
+
+export function __kodyCreatePackageBoundKody(packageId) {
+	const binding = __kodyPackageBinding(packageId);
+	return new Proxy(Object.create(null), {
+		get(_target, property) {
+			if (typeof property === "symbol" || property === "then") return undefined;
+			if (property === "mcp") return kody.mcp;
+			const name = String(property);
+			return function (args) {
+				const fn = kody[name];
+				if (typeof fn !== "function") {
+					throw new Error(
+						\`kody:runtime export "kody.\${name}" is not callable in this execution context.\`,
+					);
+				}
+				if (__kodyBindingScopedKodyCalls.has(name)) {
+					const input = args && typeof args === "object" ? args : {};
+					return fn.call(kody, { ...input, packageId: binding ?? "" });
+				}
+				return fn.call(kody, args);
+			};
+		},
+	});
 }
 
 const __kodyLocalExecuteFetchPatchedSymbol = Symbol.for(
@@ -1074,78 +1119,36 @@ if (!globalThis[__kodyLocalExecuteFetchPatchedSymbol]) {
 }
 
 export function __kodyCreatePackageBoundSecrets(packageId) {
+	const binding = __kodyPackageBinding(packageId);
+	const call = async (method, alias) => {
+		const normalizedAlias = typeof alias === "string" ? alias.trim() : "";
+		if (!normalizedAlias) {
+			throw new Error(\`packageSecrets.\${method} requires a non-empty alias.\`);
+		}
+		const args = {
+			alias: normalizedAlias,
+			...(binding ? { packageId: binding } : {}),
+		};
+		if (method === "get") {
+			const result = await kody.packageSecretGet(args);
+			return typeof result?.value === "string" ? result.value : "";
+		}
+		const result = await kody.packageSecretHas(args);
+		return result?.has === true;
+	};
 	return {
-		get: async (alias) => {
-			const normalizedAlias = typeof alias === "string" ? alias.trim() : "";
-			if (!normalizedAlias) {
-				throw new Error("packageSecrets.get requires a non-empty alias.");
-			}
-			return __kodyRunWithSecretAuthority(packageId, async () => {
-				const result = await kody.packageSecretGet({
-					alias: normalizedAlias,
-					__kodySecretAuthorityPackageId: packageId,
-				});
-				return typeof result?.value === "string" ? result.value : "";
-			});
-		},
-		has: async (alias) => {
-			const normalizedAlias = typeof alias === "string" ? alias.trim() : "";
-			if (!normalizedAlias) {
-				throw new Error("packageSecrets.has requires a non-empty alias.");
-			}
-			return __kodyRunWithSecretAuthority(packageId, async () => {
-				const result = await kody.packageSecretHas({
-					alias: normalizedAlias,
-					__kodySecretAuthorityPackageId: packageId,
-				});
-				return result?.has === true;
-			});
-		},
+		get: async (alias) => await call("get", alias),
+		has: async (alias) => await call("has", alias),
 	};
 }
 
 // Artifacts published before the shared runtime was externalized inline a
-// full cloud runtime copy, and later consumers compose them verbatim, so that
-// copy survives with no \`// virtual:\` banner for the rewrite to strip. It
-// resolves stamped packageStorage / packageSecrets through the shared runtime
-// ALS store (\`__kodyPackageStorage(packageId)\`), as hosted runs do. The CLI
-// host enters that ALS with its own runtime object, so expose a view of the
-// store that adds the CapabilityProxy-backed factories.
-const __kodyRuntimeStorageSymbol = Symbol.for("kody.runtimeStorage");
-const __kodyLocalRuntimeStorageViewSymbol = Symbol.for(
-	"kody.localExecuteRuntimeStorageView",
-);
-{
-	const __globalAny = /** @type {any} */ (globalThis);
-	const hostStorage =
-		__globalAny[__kodyRuntimeStorageSymbol] ?? new AsyncLocalStorage();
-	if (!hostStorage[__kodyLocalRuntimeStorageViewSymbol]) {
-		const views = new WeakMap();
-		const viewOf = (store) => {
-			if (store == null || typeof store !== "object") return store;
-			let view = views.get(store);
-			if (!view) {
-				view = Object.freeze({
-					...store,
-					__kodyPackageStorage:
-						store.__kodyPackageStorage ??
-						((packageId) => __kodyCreatePackageBoundStorage(packageId)()),
-					__kodyPackageSecrets:
-						store.__kodyPackageSecrets ??
-						((packageId) => __kodyCreatePackageBoundSecrets(packageId)),
-				});
-				views.set(store, view);
-			}
-			return view;
-		};
-		__globalAny[__kodyRuntimeStorageSymbol] = Object.freeze({
-			[__kodyLocalRuntimeStorageViewSymbol]: true,
-			getStore: () => viewOf(hostStorage.getStore()),
-			run: (store, callback, ...args) =>
-				hostStorage.run(store, callback, ...args),
-		});
-	}
-}
+// full cloud runtime copy that looks up packageStorage / packageSecrets
+// through the shared runtime store by package id. Hosted runs answer those
+// lookups only as the run's own package (GHSA-5fv3-qv7j-rqf5), so local runs
+// no longer add id-keyed factories to that store either: a lookup by id would
+// let any module claim another package. Such copies get the inlined runtime's
+// own "not available" error; republishing the package fixes them.
 
 /**
  * Local counterpart of cloud \`__kodyMeterStaticPackageExport\`: metering only.

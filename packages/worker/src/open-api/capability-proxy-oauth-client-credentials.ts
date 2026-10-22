@@ -5,7 +5,7 @@ import {
 } from '#mcp/execute-modules/kody-runtime-utils.ts'
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
-import { authorizeLocalExecuteOwnedPackageId } from './capability-proxy-package-grants.ts'
+import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
 import { type ApiInvocationContext } from './context.ts'
 import { invalidRequest } from './errors.ts'
 
@@ -14,8 +14,8 @@ import { invalidRequest } from './errors.ts'
  * secret placeholders through the fetch gateway (same as cloud execute), so
  * client id/secret values never enter local workerd.
  *
- * Optional `packageId` is a client stamp: origin verifies `package:execute`
- * when present, but never grants secret authority from it. Local expansion
+ * Optional `packageId` is the package graph's signed binding (never a bare
+ * id): origin verifies the binding and `package:execute` when present, but never grants secret authority from it. Local expansion
  * requires `secret:use` like ad-hoc.
  */
 
@@ -108,12 +108,12 @@ async function authorizeOauthClientCredentialsPackageId(input: {
 	ctx: ApiInvocationContext
 	packageId: string
 }) {
-	return await authorizeLocalExecuteOwnedPackageId({
+	return await authorizeLocalExecutePackageBinding({
 		db: input.ctx.env.APP_DB,
 		env: input.ctx.env,
 		request: input.ctx.callerContext.request,
 		orgUserId: ownerIdFromCaller(input.ctx.callerContext),
-		packageId: input.packageId,
+		packageBinding: input.packageId,
 	})
 }
 

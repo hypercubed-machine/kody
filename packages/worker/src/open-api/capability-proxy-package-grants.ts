@@ -4,7 +4,6 @@ import {
 	type AdditionalKodyTools,
 	type PackageSecretToolOptions,
 } from '#mcp/runtime-helper-manifest.ts'
-import { takeSecretAuthorityFromCapabilityArgs } from '#mcp/secrets/secret-authority.ts'
 import { authorize, packageResource } from '#worker/authorization/authorize.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
@@ -14,17 +13,21 @@ import {
 } from '#worker/storage-runner.ts'
 import { claimedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
+import { verifyLocalExecutePackageBinding } from '#worker/package-runtime/local-execute-package-binding.ts'
 
 /**
  * Local-execute CapabilityProxy packageStorage / packageSecrets host tools.
  *
  * Cloud execute builds a bundler provenance grant set once per run. Local
- * execute has no sandbox graph on origin per hop, so each call validates the
- * stamped package id is in the org and the actor holds `package:execute` on
- * it before packageStorage. Client-stamped package ids are `claimed` package
- * stamps: packageSecrets also require `secret:use` on the mounted secret
- * (same as ad-hoc). Gateway / authenticatedFetch / oauthClientCredentials
- * pass the same claimed stamp.
+ * execute has no sandbox graph on origin per hop, so the package graph signs
+ * one binding per package it serves (`local-execute-package-binding.ts`) and
+ * the local runtime shim sends that binding, never a bare package id. Each
+ * call verifies the binding was minted for this org and actor, then checks the
+ * package is in the org and the actor holds `package:execute` on it. The
+ * result is still a `claimed` package stamp: packageSecrets also require
+ * `secret:use` on the mounted secret (same as ad-hoc). Gateway /
+ * authenticatedFetch / oauthClientCredentials / credential clients use the
+ * same binding check.
  */
 
 function isPackageSecretAvailabilityError(error: unknown) {
@@ -38,7 +41,7 @@ function isPackageSecretAvailabilityError(error: unknown) {
 async function authorizeLocalExecutePackageId(input: {
 	env: Env
 	callerContext: McpCallerContext
-	packageId: string
+	packageBinding: unknown
 }) {
 	const orgUserId = ownerIdFromCaller(input.callerContext)
 	if (!orgUserId) {
@@ -46,16 +49,12 @@ async function authorizeLocalExecutePackageId(input: {
 			'packageStorage / packageSecrets require an authenticated user.',
 		)
 	}
-	const packageId = input.packageId.trim()
-	if (!packageId) {
-		throw new Error('packageStorage requires a non-empty package id.')
-	}
-	const authorizedPackageId = await authorizeLocalExecuteOwnedPackageId({
+	const authorizedPackageId = await authorizeLocalExecutePackageBinding({
 		db: input.env.APP_DB,
 		env: input.env,
 		request: input.callerContext.request,
 		orgUserId,
-		packageId,
+		packageBinding: input.packageBinding,
 	})
 	return {
 		userId: orgUserId,
@@ -64,24 +63,21 @@ async function authorizeLocalExecutePackageId(input: {
 	}
 }
 
-function readPackageIdFromStorageArgs(args: unknown) {
+function readPackageBindingFromArgs(args: unknown) {
 	if (args == null || typeof args !== 'object' || Array.isArray(args)) {
-		return ''
+		return { binding: '', rest: {} as Record<string, unknown> }
 	}
-	return typeof (args as { packageId?: unknown }).packageId === 'string'
-		? String((args as { packageId: string }).packageId).trim()
-		: ''
+	const { packageId, ...rest } = args as Record<string, unknown>
+	return {
+		binding: typeof packageId === 'string' ? packageId.trim() : '',
+		rest,
+	}
 }
 
 function readPackageSecretCall(args: unknown) {
-	const { args: peeled, requestedPackageId } =
-		takeSecretAuthorityFromCapabilityArgs([args])
-	const first = peeled[0]
-	const alias =
-		typeof first === 'object' && first !== null && 'alias' in first
-			? String((first as { alias: unknown }).alias ?? '').trim()
-			: ''
-	return { alias, requestedPackageId }
+	const { binding, rest } = readPackageBindingFromArgs(args)
+	const alias = 'alias' in rest ? String(rest.alias ?? '').trim() : ''
+	return { alias, binding }
 }
 
 /**
@@ -116,6 +112,36 @@ export async function authorizeLocalExecuteOwnedPackageId(input: {
 	return input.packageId
 }
 
+/**
+ * Verify a local package binding (signed by the package graph for this org
+ * and actor), then run the `package:execute` check above on the package it
+ * names. A bare package id fails, so sandbox code cannot claim a package
+ * identity by naming it.
+ */
+export async function authorizeLocalExecutePackageBinding(input: {
+	db: D1Database
+	env: Env
+	request: RequestContext | null
+	orgUserId: string
+	packageBinding: unknown
+}) {
+	const packageId = await verifyLocalExecutePackageBinding({
+		env: input.env,
+		token: input.packageBinding,
+		subject: {
+			org: input.orgUserId,
+			actor: input.request?.actor?.userId ?? null,
+		},
+	})
+	return await authorizeLocalExecuteOwnedPackageId({
+		db: input.db,
+		env: input.env,
+		request: input.request,
+		orgUserId: input.orgUserId,
+		packageId,
+	})
+}
+
 export async function createCapabilityProxyPackageHostTools(input: {
 	env: Env
 	callerContext: McpCallerContext
@@ -125,31 +151,40 @@ export async function createCapabilityProxyPackageHostTools(input: {
 
 	const storageToolsByPackageId = new Map<
 		string,
-		ReturnType<typeof createPackageStorageKodyTools>
+		{
+			tools: ReturnType<typeof createPackageStorageKodyTools>
+			grantedPackageIds: ReadonlySet<string>
+		}
 	>()
 
-	const storageToolsFor = async (packageId: string) => {
+	const storageToolsFor = async (packageBinding: string) => {
 		const authorized = await authorizeLocalExecutePackageId({
 			env: input.env,
 			callerContext: input.callerContext,
-			packageId,
+			packageBinding,
 		})
-		let tools = storageToolsByPackageId.get(authorized.packageId)
-		if (!tools) {
-			tools = createPackageStorageKodyTools({
-				env: input.env,
-				userId: authorized.userId,
-				email: input.callerContext.user?.email ?? null,
+		let entry = storageToolsByPackageId.get(authorized.packageId)
+		if (!entry) {
+			entry = {
+				tools: createPackageStorageKodyTools({
+					env: input.env,
+					userId: authorized.userId,
+					email: input.callerContext.user?.email ?? null,
+					grantedPackageIds: authorized.grantedPackageIds,
+					writable: true,
+					// The verified binding is the calling package, so its bucket
+					// passes the owner-only check (same as a hosted bound call).
+					runPackageId: authorized.packageId,
+				}),
 				grantedPackageIds: authorized.grantedPackageIds,
-				writable: true,
-			})
-			storageToolsByPackageId.set(authorized.packageId, tools)
+			}
+			storageToolsByPackageId.set(authorized.packageId, entry)
 		}
-		return tools
+		return entry
 	}
 
-	const resolveSecretAuthority = async (requestedPackageId: string | null) => {
-		if (!requestedPackageId) {
+	const resolveSecretAuthority = async (packageBinding: string | null) => {
+		if (!packageBinding) {
 			throw new Error(
 				'Package secret access requires a matching server-side package runtime context.',
 			)
@@ -157,7 +192,7 @@ export async function createCapabilityProxyPackageHostTools(input: {
 		return authorizeLocalExecutePackageId({
 			env: input.env,
 			callerContext: input.callerContext,
-			packageId: requestedPackageId,
+			packageBinding,
 		})
 	}
 
@@ -211,38 +246,51 @@ export async function createCapabilityProxyPackageHostTools(input: {
 		},
 	}
 
+	// The storage tools read `packageId` from args and check it against the
+	// granted set, so hand them the verified id in place of the binding.
+	const storageCall = async (
+		name:
+			| 'packageStorageGet'
+			| 'packageStorageList'
+			| 'packageStorageSql'
+			| 'packageStorageSet'
+			| 'packageStorageDelete'
+			| 'packageStorageClear',
+		args: unknown,
+	) => {
+		const { binding, rest } = readPackageBindingFromArgs(args)
+		const entry = await storageToolsFor(binding)
+		const authorizedPackageId = [...entry.grantedPackageIds][0]!
+		const tool = entry.tools[name]
+		if (!tool) {
+			throw new Error(`${name} is not available in this context.`)
+		}
+		return await tool({ ...rest, packageId: authorizedPackageId })
+	}
+
 	return {
 		packageStorageGet: async (args: unknown) =>
-			(
-				await storageToolsFor(readPackageIdFromStorageArgs(args))
-			).packageStorageGet(args),
+			storageCall('packageStorageGet', args),
 		packageStorageList: async (args: unknown) =>
-			(
-				await storageToolsFor(readPackageIdFromStorageArgs(args))
-			).packageStorageList(args),
+			storageCall('packageStorageList', args),
 		packageStorageSql: async (args: unknown) =>
-			(
-				await storageToolsFor(readPackageIdFromStorageArgs(args))
-			).packageStorageSql(args),
+			storageCall('packageStorageSql', args),
 		packageStorageSet: async (args: unknown) =>
-			(await storageToolsFor(readPackageIdFromStorageArgs(args)))
-				.packageStorageSet!(args),
+			storageCall('packageStorageSet', args),
 		packageStorageDelete: async (args: unknown) =>
-			(await storageToolsFor(readPackageIdFromStorageArgs(args)))
-				.packageStorageDelete!(args),
+			storageCall('packageStorageDelete', args),
 		packageStorageClear: async (args: unknown) =>
-			(await storageToolsFor(readPackageIdFromStorageArgs(args)))
-				.packageStorageClear!(args),
+			storageCall('packageStorageClear', args),
 		packageSecretGet: async (args: unknown) => {
-			const { alias, requestedPackageId } = readPackageSecretCall(args)
+			const { alias, binding } = readPackageSecretCall(args)
 			return {
-				value: await packageSecretTools.get(alias, requestedPackageId),
+				value: await packageSecretTools.get(alias, binding || null),
 			}
 		},
 		packageSecretHas: async (args: unknown) => {
-			const { alias, requestedPackageId } = readPackageSecretCall(args)
+			const { alias, binding } = readPackageSecretCall(args)
 			return {
-				has: await packageSecretTools.has(alias, requestedPackageId),
+				has: await packageSecretTools.has(alias, binding || null),
 			}
 		},
 	}
