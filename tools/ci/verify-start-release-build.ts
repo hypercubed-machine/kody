@@ -62,7 +62,8 @@ export async function verifyStartReleaseBuild(
 	).join('\n')
 	if (!sources.includes(`${base}_serverFn/`))
 		throw new Error('Server RPC namespace is missing')
-	const assetPattern = new RegExp(`${base}assets/[A-Za-z0-9_.-]+`, 'g')
+	// Route chunk names can include `@` (e.g. `_app.@__orgSlug__.-.jobs-….js`).
+	const assetPattern = new RegExp(`${base}assets/[A-Za-z0-9_.@-]+`, 'g')
 	const references = new Set(sources.match(assetPattern))
 	if (references.size === 0)
 		throw new Error('Start SSR manifest contains no release asset references')
