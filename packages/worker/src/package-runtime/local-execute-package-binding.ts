@@ -18,6 +18,10 @@ import {
 import { z } from 'zod'
 
 const bindingPrefix = 'kpb1.'
+// One graph serves one local run. `kody dev` keeps a graph for its whole
+// generation, so a dev session left running past this lifetime gets the
+// error below on package-scoped calls until it is restarted (or a source
+// change starts a new generation, which fetches a fresh graph).
 const bindingLifetimeMs = 24 * 60 * 60 * 1000
 const signingInfo = new TextEncoder().encode(
 	'kody/local-execute-package-binding/v1',
@@ -123,7 +127,7 @@ export async function signLocalExecutePackageBindings(input: {
 export class LocalExecutePackageBindingError extends Error {
 	constructor() {
 		super(
-			'This package identity is not valid for this local run. Package identity comes from the package graph; rerun so the CLI fetches a fresh graph.',
+			'This package identity is not valid for this local run. Package identity comes from the package graph and lasts 24 hours; rerun the command (or restart `kody dev`) so the CLI fetches a fresh graph.',
 		)
 		this.name = 'LocalExecutePackageBindingError'
 	}
