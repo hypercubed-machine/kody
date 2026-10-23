@@ -119,7 +119,12 @@ signed in, user-scoped package results are empty.
   and host. Self-authored and adopted packages still need this host grant.
 - **Package not approved for secret:** self-authored and adopted packages can
   read and use user secrets; unadopted community forks need an
-  `allowed_packages` grant (or adoption after review). See
+  `allowed_packages` grant (or adoption after review). When a credential's
+  `allowed_packages` list is non-empty and leaves a package out, that package is
+  denied when it is reached through another package or imported in a one-off
+  execute run, even if you authored or adopted it. Running on its own it still
+  works for now, and publish and save warn about it. Approve the package on the
+  secret's page or move the use into a package already on the list. See
   [Secrets and host approval](./secrets-and-values.md#package-approval).
 
 ## MCP servers

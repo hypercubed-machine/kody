@@ -1,9 +1,13 @@
 /**
- * Advance (non-blocking) publish/save warnings when a package fills a
- * user-scope credential by literal name and that credential's allowed-packages
- * list is non-empty and does not include this package. Stricter enforcement of
- * the existing allowed-packages setting starts Wednesday, Oct 21, 2026; until
- * then these warnings only tip owners to approve or move the use.
+ * Non-blocking publish/save warnings when a package fills a user-scope
+ * credential by literal name and that credential's allowed-packages list is
+ * non-empty and does not include this package.
+ *
+ * Current runtime behavior (see `assertPackageCanAccessResolvedSecret`): the
+ * list is already enforced when the package is reached through another package
+ * or a one-off execute run, but a self-authored or adopted package running on
+ * its own still uses the credential (issue #4129). The warning tells the owner
+ * how to approve or move the use.
  *
  * Does not change fill, access, publish, or save behavior.
  */
@@ -25,9 +29,6 @@ import { buildSecretPackageApprovalUrl } from '#mcp/secrets/package-approval-url
 import { resolveSecretPageOrgSlug } from '#mcp/secrets/package-access.ts'
 import { findSecret } from '#mcp/secrets/service.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
-
-export const credentialAllowedPackagesEnforcementDate =
-	'Wednesday, Oct 21, 2026'
 
 export type AllowedPackagesListEntry =
 	| { kind: 'package'; id: string; displayName: string }
@@ -51,7 +52,7 @@ export function formatCredentialAllowedPackagesPublishWarning(
 	input: CredentialAllowedPackagesPublishWarning,
 ): string {
 	const allowedList = formatAllowedPackagesList(input.allowedEntries)
-	return `Credential "${input.credentialName}" is allowed only for ${allowedList}, not ${input.packageDisplayName}. Starting ${credentialAllowedPackagesEnforcementDate}, Kody enforces allowed-package lists everywhere, including when this package is used through another package or loaded in a one-off execute run, so these uses will be denied. To allow it, approve: ${input.approvalUrl}. Or move this credential use into a package that is already allowed.`
+	return `Credential "${input.credentialName}" is allowed only for ${allowedList}, not ${input.packageDisplayName}. Kody denies this use when ${input.packageDisplayName} is used through another package or imported in a one-off execute run. When ${input.packageDisplayName} runs on its own, Kody still allows it for now because you authored or adopted the package; that exception is planned to go away. To allow it everywhere, approve: ${input.approvalUrl}. Or move this credential use into a package that is already allowed.`
 }
 
 export function formatAllowedPackagesList(
