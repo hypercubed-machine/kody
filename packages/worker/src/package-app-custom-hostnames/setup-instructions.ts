@@ -127,7 +127,7 @@ export function buildPackageAppCustomHostnameSetup(input: {
 			? `Add the ${records.length === 1 ? 'record' : `${records.length} records`} listed in records exactly as shown (type, name, value). Set every record to DNS only, with any proxy or CDN option turned off.`
 			: 'Add a CNAME for the hostname pointing at the package-app domains host. Set it to DNS only, with any proxy or CDN option turned off.',
 		'Wait. Kody re-checks pending hostnames every few minutes, and most go active a few minutes after the records are published. There is no need to call sync repeatedly; call it once only if you want an immediate check.',
-		`When hostname_status and ssl_status are both "active", the app serves at https://${input.hostname}/.`,
+		`When status.state is "active" (hostname_status and ssl_status both "active"), the app serves at https://${input.hostname}/ and Kody emails the owners. If it is still not active after 48 hours, Kody stops checking, marks it needs_attention with a reason, and emails the owners.`,
 	]
 	return {
 		records,
