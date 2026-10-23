@@ -25,7 +25,9 @@ import {
 	checkOrgWide,
 	checkPermission,
 	computeEffectivePermissions,
+	getRequestPermissions,
 	packageResource as storedPackageResource,
+	runWithRequestPermissions,
 	type EffectivePermissions,
 	type OrgResource,
 } from './authorize.ts'
@@ -543,4 +545,70 @@ test('nonInteractiveTriggerOf names the trigger behind a run no live person made
 	expect(
 		nonInteractiveTriggerOf({ ...request({ kind: 'cli' }), actor: null }),
 	).toEqual({ type: 'unattended', credentialId: null })
+})
+
+test('delegation, shares, and platform packages are stored packages, so another org is wrong_org', async () => {
+	// Those routes no longer exist. A package reached through any of them is
+	// the row's owning org, and a request bound to a different org is wrong_org.
+	for (const label of [
+		'@platform/delegated',
+		'@owner/shared',
+		'@kody/builtin',
+	]) {
+		const foreign = storedPackageResource({
+			id: 'pkg-9',
+			userId: ownerIdFromStored('org-2'),
+			label,
+		})
+		expect(foreign.orgId).toBe(ownerIdFromStored('org-2'))
+		const error = denial(checkPermission(access(), 'package:execute', foreign))
+		expect(error.code).toBe('wrong_org')
+		expect(error.message).toBe(`package ${label} belongs to another org.`)
+	}
+	expect(
+		canSeeResource(
+			access(),
+			storedPackageResource({
+				id: 'pkg-9',
+				userId: ownerIdFromStored('org-2'),
+			}),
+		),
+	).toBe(false)
+
+	const request = sessionRequestContext('user-1')
+	stubCompile(request)
+	await expect(
+		authorize(
+			{ env, request },
+			'package:read',
+			storedPackageResource({
+				id: 'pkg-9',
+				userId: ownerIdFromStored('org-2'),
+			}),
+		),
+	).rejects.toMatchObject({ code: 'wrong_org' })
+	await expect(
+		authorize(
+			{ env, request },
+			'package:read',
+			storedPackageResource({
+				id: 'pkg-1',
+				userId: ownerIdFromStored('user-1'),
+			}),
+		),
+	).resolves.toBeUndefined()
+})
+
+test('deep call sites read the permissions bound for the request', async () => {
+	const request = sessionRequestContext('user-1')
+	stubCompile(request)
+	const bound = await runWithRequestPermissions({ env, request }, async () =>
+		getRequestPermissions(),
+	)
+	expect(bound).toBe(await computeEffectivePermissions({ env, request }))
+	await expect(
+		runWithRequestPermissions({ env, request: null }, async () =>
+			getRequestPermissions(),
+		),
+	).resolves.toBeUndefined()
 })
