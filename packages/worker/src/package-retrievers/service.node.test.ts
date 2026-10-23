@@ -4,19 +4,19 @@ import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 
 const mockFns = vi.hoisted(() => ({
-	getSavedPackageById: vi.fn(),
-	getEntitySourceById: vi.fn(),
+	listSavedPackagesByIds: vi.fn(),
+	listEntitySourcesByIds: vi.fn(),
 	listPackageRetrieversForScope: vi.fn(),
 	loadPublishedBundleArtifactByIdentity: vi.fn(),
 	runBundledModuleWithRegistry: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	getSavedPackageById: mockFns.getSavedPackageById,
+	listSavedPackagesByIds: mockFns.listSavedPackagesByIds,
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: mockFns.getEntitySourceById,
+	listEntitySourcesByIds: mockFns.listEntitySourcesByIds,
 }))
 
 vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
@@ -112,19 +112,23 @@ test('runPackageRetrievers soft-fails a timed-out retriever and keeps healthy re
 		scopes: ['context'],
 	})
 	mockFns.listPackageRetrieversForScope.mockResolvedValue([healthy, stalled])
-	mockFns.getSavedPackageById.mockImplementation(
-		async (_db: unknown, input: { packageId: string }) =>
-			createSavedPackage({
-				packageId: input.packageId,
-				kodyId:
-					input.packageId === 'pkg-healthy' ? 'healthy-pkg' : 'stalled-pkg',
-			}),
+	mockFns.listSavedPackagesByIds.mockImplementation(
+		async (
+			_db: unknown,
+			input: { userId: string; packageIds: Array<string> },
+		) =>
+			input.packageIds.map((packageId) =>
+				createSavedPackage({
+					packageId,
+					kodyId: packageId === 'pkg-healthy' ? 'healthy-pkg' : 'stalled-pkg',
+				}),
+			),
 	)
-	mockFns.getEntitySourceById.mockImplementation(
-		async (_db: unknown, sourceId: string) =>
-			createEntitySource({
-				packageId: sourceId.replace(/^source-/, ''),
-			}),
+	mockFns.listEntitySourcesByIds.mockImplementation(
+		async (_db: unknown, sourceIds: Array<string>) =>
+			sourceIds.map((sourceId) =>
+				createEntitySource({ packageId: sourceId.replace(/^source-/, '') }),
+			),
 	)
 	mockFns.loadPublishedBundleArtifactByIdentity.mockResolvedValue({
 		artifact: {
