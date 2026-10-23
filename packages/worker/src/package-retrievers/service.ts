@@ -331,15 +331,29 @@ export async function runPackageRetrievers(input: {
 		})
 	).slice(0, input.maxProviders ?? (input.scope === 'context' ? 3 : 10))
 	// Bulk-load savedPackage and entitySource rows up front so that the
-	// per-retriever fan-out below does not produce N+1 DB queries.
+	// per-retriever fan-out below does not produce N+1 DB queries. If a batch
+	// query fails we fall back to undefined maps so each invokeRetriever call
+	// falls back to its own DB read — keeping the soft-failure semantics of
+	// Promise.allSettled intact rather than rejecting the whole call.
 	const packageIds = entries.map((e) => e.packageId)
 	const sourceIds = entries.map((e) => e.sourceId)
-	const [savedPackageRows, entitySourceRows] = await Promise.all([
-		listSavedPackagesByIds(input.env.APP_DB, { userId, packageIds }),
-		listEntitySourcesByIds(input.env.APP_DB, sourceIds),
-	])
-	const savedPackageById = new Map(savedPackageRows.map((p) => [p.id, p]))
-	const entitySourceById = new Map(entitySourceRows.map((s) => [s.id, s]))
+	let savedPackageById: Map<string, SavedPackageRecord> | undefined
+	let entitySourceById: Map<string, EntitySourceRow> | undefined
+	try {
+		const [savedPackageRows, entitySourceRows] = await Promise.all([
+			listSavedPackagesByIds(input.env.APP_DB, { userId, packageIds }),
+			listEntitySourcesByIds(input.env.APP_DB, sourceIds),
+		])
+		savedPackageById = new Map(savedPackageRows.map((p) => [p.id, p]))
+		entitySourceById = new Map(entitySourceRows.map((s) => [s.id, s]))
+	} catch (error) {
+		console.error(
+			JSON.stringify({
+				message: 'bulk prefetch failed for package retrievers; falling back to per-retriever DB reads',
+				reason: getErrorMessage(error),
+			}),
+		)
+	}
 
 	// Soft-fail per retriever: one stalled/buggy package must not fail MCP
 	// `search` or pre-sandbox execute memory/context enrichment. Callers already
@@ -362,9 +376,12 @@ export async function runPackageRetrievers(input: {
 						memoryContext: input.memoryContext,
 						conversationId: input.conversationId,
 						waitUntil: input.waitUntil,
-						prefetchedSavedPackage:
-							savedPackageById.get(entry.packageId) ?? null,
-						prefetchedSource: entitySourceById.get(entry.sourceId) ?? null,
+						prefetchedSavedPackage: savedPackageById
+							? (savedPackageById.get(entry.packageId) ?? null)
+							: undefined,
+						prefetchedSource: entitySourceById
+							? (entitySourceById.get(entry.sourceId) ?? null)
+							: undefined,
 					}),
 				),
 			),

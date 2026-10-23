@@ -188,6 +188,20 @@ test('runPackageRetrievers soft-fails a timed-out retriever and keeps healthy re
 	expect(run.warnings[0]).toMatch(/stalled-pkg\/inbox/)
 	expect(run.warnings[0]).toMatch(/timed out/i)
 	expect(consoleError).toHaveBeenCalledTimes(1)
+	// Bulk helpers must each be called exactly once (not once per retriever)
+	// to prevent N+1 DB query regressions.
+	expect(mockFns.listSavedPackagesByIds).toHaveBeenCalledTimes(1)
+	expect(mockFns.listSavedPackagesByIds).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			packageIds: expect.arrayContaining(['pkg-healthy', 'pkg-stalled']),
+		}),
+	)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledTimes(1)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.arrayContaining(['source-pkg-healthy', 'source-pkg-stalled']),
+	)
 	expect(mockFns.runBundledModuleWithRegistry).toHaveBeenCalledTimes(2)
 	for (const call of mockFns.runBundledModuleWithRegistry.mock.calls) {
 		expect(call[4]).toEqual(
