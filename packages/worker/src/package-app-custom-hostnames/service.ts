@@ -24,6 +24,11 @@ import {
 } from '#worker/package-app-custom-hostnames/limits.ts'
 import { packageAppCustomDomainsCnameTargetFromBaseUrl } from '#worker/package-app-custom-hostnames/cname-target.ts'
 import { invalidateCachedPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
+import { buildPackageAppCustomHostnameSetup } from '#worker/package-app-custom-hostnames/setup-instructions.ts'
+import {
+	isKodyReservedCustomHostname,
+	listKodyRegistrableDomains,
+} from '#worker/app-base-url.ts'
 import {
 	isPackageAppCustomHostnameVerified,
 	normalizeCustomHostname,
@@ -224,6 +229,38 @@ function createCloudflareClient(env: Env & { fetcher?: Fetcher }) {
 			env.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN,
 		PACKAGE_APP_ZONE_ID: env.PACKAGE_APP_ZONE_ID,
 		fetcher: env.fetcher,
+	})
+}
+
+/**
+ * Refuse hostnames the package-app runtime will never serve (Kody-owned
+ * parent domains and `*.workers.dev`). Same predicate as
+ * `resolveVerifiedCustomHostnameIfEnabled`, so registration and serving
+ * cannot drift.
+ */
+export function assertCustomHostnameNotKodyReserved(
+	env: Env,
+	hostname: string,
+) {
+	if (!isKodyReservedCustomHostname({ env, hostname })) return
+	const domains = listKodyRegistrableDomains(env).join(', ')
+	throw new PackageAppCustomHostnameError(
+		`${hostname} cannot be a custom domain. Kody never serves package apps on its own domains (${domains}) or on workers.dev, which keeps app code separate from Kody sign-in cookies. Use a hostname on a domain you own, such as apps.example.com.`,
+	)
+}
+
+function setupFor(
+	env: Env,
+	hostname: string,
+	verification: PackageAppCustomHostnameVerification,
+) {
+	return buildPackageAppCustomHostnameSetup({
+		hostname,
+		cnameTarget: packageAppCustomDomainsCnameTargetFromBaseUrl(
+			env.PACKAGE_APP_BASE_URL,
+		),
+		ownershipVerification: verification.ownership_verification,
+		sslValidationRecords: verification.ssl_validation_records,
 	})
 }
 
@@ -533,6 +570,7 @@ export async function addPackageAppCustomHostname(input: {
 	if (!hostname) {
 		throw new PackageAppCustomHostnameError('hostname is not a valid DNS name.')
 	}
+	assertCustomHostnameNotKodyReserved(input.env, hostname)
 	const existingCount = await countOrgCustomHostnames(
 		input.env.APP_DB,
 		input.orgId,
@@ -710,10 +748,12 @@ export async function addPackageAppCustomHostname(input: {
 	}
 	invalidateCachedPackageAppCustomHostname(input.env.APP_DB, hostname)
 	const billingNote = await billingNoteForAdd(input.env.APP_DB, input.orgId)
+	const verification = verificationFromCloudflare(cf)
 	return {
 		hostname: publicRow(rowFromSql(row)),
 		dns: dnsHint(input.env, hostname),
-		verification: verificationFromCloudflare(cf),
+		verification,
+		setup: setupFor(input.env, hostname, verification),
 		billing_note: billingNote,
 	}
 }
@@ -765,15 +805,18 @@ export async function syncPackageAppCustomHostname(input: {
 		nowIso,
 	})
 	invalidateCachedPackageAppCustomHostname(input.env.APP_DB, updated.hostname)
-	return {
-		hostname: publicRow(updated),
-		dns: dnsHint(input.env, updated.hostname),
-		verification: isCloudflareCustomHostnameGone(cfOrGone)
+	const verification: PackageAppCustomHostnameVerification =
+		isCloudflareCustomHostnameGone(cfOrGone)
 			? {
 					ownership_verification: null,
 					ssl_validation_records: [],
 				}
-			: verificationFromCloudflare(cf),
+			: verificationFromCloudflare(cf)
+	return {
+		hostname: publicRow(updated),
+		dns: dnsHint(input.env, updated.hostname),
+		verification,
+		setup: setupFor(input.env, updated.hostname, verification),
 	}
 }
 

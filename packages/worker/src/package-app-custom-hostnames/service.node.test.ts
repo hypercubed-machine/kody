@@ -151,6 +151,48 @@ test('add rejects app-level hostnames for non-internet-visible packages', async 
 	expect(fetcher.fetch).not.toHaveBeenCalled()
 })
 
+test('add rejects hostnames under Kody-owned domains before calling Cloudflare', async () => {
+	const db = createDb()
+	await db
+		.prepare(
+			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
+		)
+		.run()
+	const fetcher = {
+		fetch: vi.fn(async () => cfHostnameResponse()),
+	} as unknown as Fetcher
+	const env = {
+		...createEnv(db),
+		APP_BASE_URL: 'https://kody.codes',
+		APP_LEGACY_HOSTS: 'legacy-kody.example',
+		fetcher,
+	} as unknown as Env
+	for (const hostname of [
+		'docs.kody.codes',
+		'KODY.CODES',
+		'apps.kody.run',
+		'old.legacy-kody.example',
+		'demo.workers.dev',
+	]) {
+		await expect(
+			addPackageAppCustomHostname({
+				env,
+				orgId: 'org-1',
+				actingUserId: 1,
+				createdByUserId: 'person-1',
+				bindingKind: 'org',
+				hostname,
+			}),
+		).rejects.toThrow(/cannot be a custom domain.*kody\.codes, kody\.run/)
+	}
+	expect(fetcher.fetch).not.toHaveBeenCalled()
+})
+
 test('add rejects free-plan orgs before calling Cloudflare', async () => {
 	const db = createDb()
 	await db
@@ -386,6 +428,34 @@ test('add stores org binding with verification records and list returns it', asy
 		'ownership-token',
 	)
 	expect(added.verification.ssl_validation_records[0]?.value).toBe('ssl-token')
+	expect(added.setup.records).toEqual([
+		{
+			type: 'CNAME',
+			name: 'team.example.com',
+			relative_name: 'team',
+			value: 'domains.kody.run',
+			proxy: 'dns_only',
+			purpose: 'routing',
+		},
+		{
+			type: 'TXT',
+			name: '_cf-custom-hostname.team.example.com',
+			relative_name: '_cf-custom-hostname.team',
+			value: 'ownership-token',
+			proxy: 'dns_only',
+			purpose: 'ownership',
+		},
+		{
+			type: 'TXT',
+			name: '_acme-challenge.team.example.com',
+			relative_name: '_acme-challenge.team',
+			value: 'ssl-token',
+			proxy: 'dns_only',
+			purpose: 'certificate',
+		},
+	])
+	expect(added.setup.steps.join('\n')).toMatch(/DNS only/)
+	expect(added.setup.steps.join('\n')).toMatch(/re-checks pending hostnames/)
 	expect(
 		JSON.parse(
 			String(
@@ -475,6 +545,11 @@ test('sync refreshes Cloudflare status and returns verification records', async 
 	expect(synced.verification.ownership_verification?.name).toBe(
 		'_cf-custom-hostname.team.example.com',
 	)
+	expect(synced.setup.records.map((record) => record.type)).toEqual([
+		'CNAME',
+		'TXT',
+		'TXT',
+	])
 })
 
 test('add compensates with Cloudflare delete when the local insert fails', async () => {

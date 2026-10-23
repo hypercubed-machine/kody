@@ -1,0 +1,137 @@
+import { getDomain } from 'tldts'
+import { type PackageAppCustomHostnameDnsRecord } from '#worker/package-app-custom-hostnames/types.ts'
+
+/**
+ * One DNS record the customer must publish at their DNS provider. `name` is
+ * the fully qualified record name; `relative_name` is the same name with the
+ * customer's registrable domain removed (`@` for the apex), which is what most
+ * provider forms expect in their Name / Host field.
+ */
+export type PackageAppCustomHostnameSetupRecord = {
+	type: 'CNAME' | 'TXT'
+	name: string
+	relative_name: string
+	value: string
+	/** Always `dns_only`: proxied records never validate. */
+	proxy: 'dns_only'
+	purpose: 'routing' | 'ownership' | 'certificate'
+}
+
+/**
+ * Plain-language setup a person (or agent) can follow without knowing
+ * Cloudflare for SaaS. Returned by add and sync so the records stay current
+ * while the hostname is pending.
+ */
+export type PackageAppCustomHostnameSetup = {
+	records: Array<PackageAppCustomHostnameSetupRecord>
+	steps: Array<string>
+	provider_notes: Array<string>
+}
+
+export const packageAppCustomHostnameProviderNotes: ReadonlyArray<string> = [
+	'Cloudflare DNS: set Proxy status to "DNS only" (grey cloud). A proxied (orange cloud) record never validates.',
+	'GoDaddy, Namecheap, Squarespace, Porkbun, and most registrar DNS forms add your domain to the Name automatically. Enter relative_name (for example "apps" or "_cf-custom-hostname.apps"), not the full name.',
+	'Route 53, Google Cloud DNS, and other zone-file style editors take the full name. Use name (a trailing dot is fine).',
+	'A root domain such as example.com cannot use a plain CNAME at most providers. Use a subdomain such as apps.example.com, or a provider that supports CNAME flattening or ALIAS records.',
+	'If the domain has CAA records, they must allow the certificate authorities Cloudflare uses, or the certificate cannot issue.',
+]
+
+function relativeRecordName(name: string, zone: string | null) {
+	const normalized = name.trim().toLowerCase().replace(/\.+$/, '')
+	if (!zone) return normalized
+	if (normalized === zone) return '@'
+	if (normalized.endsWith(`.${zone}`)) {
+		return normalized.slice(0, -(zone.length + 1))
+	}
+	return normalized
+}
+
+function toSetupRecord(input: {
+	type: 'CNAME' | 'TXT'
+	name: string
+	value: string
+	purpose: PackageAppCustomHostnameSetupRecord['purpose']
+	zone: string | null
+}): PackageAppCustomHostnameSetupRecord {
+	return {
+		type: input.type,
+		name: input.name,
+		relative_name: relativeRecordName(input.name, input.zone),
+		value: input.value,
+		proxy: 'dns_only',
+		purpose: input.purpose,
+	}
+}
+
+/**
+ * Build the exact DNS records and steps for one custom hostname. HTTP
+ * certificate validation records are omitted: Cloudflare completes those
+ * itself once the CNAME resolves, so the customer has nothing to publish.
+ */
+export function buildPackageAppCustomHostnameSetup(input: {
+	hostname: string
+	cnameTarget: string | null
+	ownershipVerification: PackageAppCustomHostnameDnsRecord | null
+	sslValidationRecords: ReadonlyArray<PackageAppCustomHostnameDnsRecord>
+}): PackageAppCustomHostnameSetup {
+	const zone = getDomain(input.hostname)
+	const records: Array<PackageAppCustomHostnameSetupRecord> = []
+	if (input.cnameTarget) {
+		records.push(
+			toSetupRecord({
+				type: 'CNAME',
+				name: input.hostname,
+				value: input.cnameTarget,
+				purpose: 'routing',
+				zone,
+			}),
+		)
+	}
+	const seen = new Set<string>()
+	const txtCandidates: Array<{
+		record: PackageAppCustomHostnameDnsRecord
+		purpose: PackageAppCustomHostnameSetupRecord['purpose']
+	}> = [
+		...(input.ownershipVerification
+			? [
+					{
+						record: input.ownershipVerification,
+						purpose: 'ownership' as const,
+					},
+				]
+			: []),
+		...input.sslValidationRecords.map((record) => ({
+			record,
+			purpose: 'certificate' as const,
+		})),
+	]
+	for (const { record, purpose } of txtCandidates) {
+		if (record.type.trim().toLowerCase() !== 'txt') continue
+		const key = `${record.name.toLowerCase()}\n${record.value}`
+		if (seen.has(key)) continue
+		seen.add(key)
+		records.push(
+			toSetupRecord({
+				type: 'TXT',
+				name: record.name,
+				value: record.value,
+				purpose,
+				zone,
+			}),
+		)
+	}
+	const providerLabel = zone ?? input.hostname
+	const steps = [
+		`Open the DNS settings for ${providerLabel} at the provider that hosts its DNS.`,
+		records.length
+			? `Add the ${records.length === 1 ? 'record' : `${records.length} records`} listed in records exactly as shown (type, name, value). Set every record to DNS only, with any proxy or CDN option turned off.`
+			: 'Add a CNAME for the hostname pointing at the package-app domains host. Set it to DNS only, with any proxy or CDN option turned off.',
+		'Wait. Kody re-checks pending hostnames every few minutes, and most go active a few minutes after the records are published. There is no need to call sync repeatedly; call it once only if you want an immediate check.',
+		`When hostname_status and ssl_status are both "active", the app serves at https://${input.hostname}/.`,
+	]
+	return {
+		records,
+		steps,
+		provider_notes: [...packageAppCustomHostnameProviderNotes],
+	}
+}

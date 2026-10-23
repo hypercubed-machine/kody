@@ -18,6 +18,35 @@ export const packageAppCustomHostnameVerificationSchema = z.object({
 	ssl_validation_records: z.array(packageAppCustomHostnameDnsRecordSchema),
 })
 
+export const packageAppCustomHostnameSetupSchema = z
+	.object({
+		records: z
+			.array(
+				z.object({
+					type: z.enum(['CNAME', 'TXT']),
+					name: z.string().describe('Fully qualified record name.'),
+					relative_name: z
+						.string()
+						.describe(
+							'Record name without your domain (@ for the root). Most DNS provider forms want this.',
+						),
+					value: z.string(),
+					proxy: z
+						.literal('dns_only')
+						.describe('Publish as DNS only. Proxied records never validate.'),
+					purpose: z.enum(['routing', 'ownership', 'certificate']),
+				}),
+			)
+			.describe('Every DNS record to publish, exactly as shown.'),
+		steps: z.array(z.string()).describe('Plain step-by-step instructions.'),
+		provider_notes: z
+			.array(z.string())
+			.describe('Short notes for common DNS providers.'),
+	})
+	.describe(
+		'DNS records and steps to finish setup. Kody re-checks pending hostnames automatically.',
+	)
+
 export const packageAppCustomHostnameRowSchema = z.object({
 	id: z.string(),
 	hostname: z.string(),
