@@ -80,10 +80,9 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 	})
 	expect(excluded.results).toEqual([])
 	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledTimes(1)
-	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(
-		env.APP_DB,
-		['source-hidden'],
-	)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [
+		'source-hidden',
+	])
 	mockFns.listEntitySourcesByIds.mockClear()
 
 	// Search with includeHiddenPackages: passes the hidden check, but source is
@@ -98,10 +97,9 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 		includeHiddenPackages: true,
 	})
 	expect(included.results).toEqual([])
-	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(
-		env.APP_DB,
-		['source-hidden'],
-	)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [
+		'source-hidden',
+	])
 	mockFns.listEntitySourcesByIds.mockClear()
 
 	const { entry: contextEntry } = createHiddenRetrieverFixture(['context'])
@@ -117,10 +115,9 @@ test('hidden package retrievers skip search by default, honor includeHiddenPacka
 		query: 'notes',
 	})
 	expect(contextRun.results).toEqual([])
-	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(
-		env.APP_DB,
-		['source-hidden'],
-	)
+	expect(mockFns.listEntitySourcesByIds).toHaveBeenCalledWith(env.APP_DB, [
+		'source-hidden',
+	])
 	// The dynamic import above pulls in the retriever service module graph, and a
 	// cold transform of it can exceed the 5s default when the worker pool is
 	// saturated (the suite spends far longer importing than running). Same

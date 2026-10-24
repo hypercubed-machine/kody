@@ -154,9 +154,9 @@ async function invokeRetriever(input: {
 		input.prefetchedSavedPackage !== undefined
 			? input.prefetchedSavedPackage
 			: await getSavedPackageById(input.env.APP_DB, {
-					userId: input.userId,
-					packageId: input.entry.packageId,
-				})
+				userId: input.userId,
+				packageId: input.entry.packageId,
+			})
 	if (!savedPackage) {
 		return []
 	}
