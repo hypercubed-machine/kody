@@ -152,6 +152,7 @@ import {
 } from './package-app-authority.ts'
 import { findLivePackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
 import { scopesIncludeEmail } from '#app/package-app-oauth-scopes.ts'
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	buildPackageAppAssetBasePath,
 	buildPackageAppClientModuleUrl,
@@ -1928,19 +1929,31 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			{ name: packageAppIdentityCapabilityName, args },
 		)) as Record<string, unknown>
 		if (!visitor) return identity
-		const email = typeof identity.email === 'string' ? identity.email : ''
-		const grant = email
-			? await this.findVisitorGrant(visitor).catch(() => null)
-			: null
-		if (email && grant && scopesIncludeEmail(grant.scopes)) {
-			return { ...identity, role: visitor.role }
-		}
 		const withoutEmail: Record<string, unknown> = {
 			...identity,
 			role: visitor.role,
 		}
 		delete withoutEmail.email
-		return withoutEmail
+		const grant = await this.findVisitorGrant(visitor).catch(() => null)
+		if (!grant || !scopesIncludeEmail(grant.scopes)) return withoutEmail
+		const email = await this.loadVisitorEmail(visitor)
+		if (!email) return withoutEmail
+		return { ...withoutEmail, email }
+	}
+
+	/** The visitor's own address, never the caller-context / owner email. */
+	private async loadVisitorEmail(visitor: RuntimePackageAppVisitor) {
+		const row = await this.env.APP_DB.prepare(
+			`SELECT email FROM users
+			 WHERE stable_user_id = ?
+			   AND suspended_at IS NULL
+			   AND deleting_at IS NULL${andLiveDeletedAtSql()}
+			 LIMIT 1`,
+		)
+			.bind(visitor.userId)
+			.first<{ email: string | null }>()
+		const email = row?.email?.trim() ?? ''
+		return email === '' ? null : email
 	}
 
 	private async findVisitorGrant(visitor: RuntimePackageAppVisitor) {

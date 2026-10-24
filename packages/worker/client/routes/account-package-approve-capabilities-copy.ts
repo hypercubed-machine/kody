@@ -53,7 +53,8 @@ export function credentialSummary(entry: CapabilityEntry) {
  */
 export function credentialVisitorsNote(entry: CapabilityEntry) {
 	if (!entry.ownerCredentialForVisitors) return null
-	return 'This flag is deprecated and ignored. The app already uses the publisher’s credentials for every visitor.'
+	const need = entry.needKey ? `The ${entry.needKey} need` : 'A need'
+	return `${need} sets ownerCredentialForVisitors, which is deprecated and ignored. The app already uses the publisher’s credentials for every visitor.`
 }
 
 /** Stable list key: one credential can appear once per visitor-shared need. */
