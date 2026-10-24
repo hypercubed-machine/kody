@@ -23,6 +23,7 @@ import {
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import { recordPackageAppPublisher } from './package-app-authority.ts'
 import {
 	createPackageAppCallerContext,
 	PackageAppRuntimeBridge,
@@ -93,6 +94,12 @@ async function setup() {
 		)
 		.bind(orgId)
 		.run()
+	await recordPackageAppPublisher({
+		db,
+		scope: { orgId, packageId: 'pkg-app' },
+		personId: ownerId,
+		publisherIsOwner: true,
+	})
 	const env = {
 		APP_DB: db,
 		AUDIT_DB: createAuditTestDb(),
@@ -127,6 +134,8 @@ async function setup() {
 					sourceId: 'source-pkg-app',
 					publishedCommit: 'commit-1',
 					packageStorageGrantIds: ['pkg-app'],
+					declaredCapabilities: ['orgMemberUpdate'],
+					visitorNeeds: {},
 				},
 				waitUntil: () => {},
 			} as never,
@@ -152,7 +161,7 @@ const promoteBea = {
 	args: { username: 'bea', role: 'owner' },
 }
 
-test("a member's package app acts as its visitor, so it cannot make them Owner", async () => {
+test('a Member visiting an Owner-published app cannot promote anyone', async () => {
 	const t = await setup()
 
 	const callerContext: McpCallerContext = await createPackageAppCallerContext({
@@ -189,7 +198,7 @@ test("a member's package app acts as its visitor, so it cannot make them Owner",
 	expect(await t.beasRole()).toBe('member')
 })
 
-test('an anonymous visitor of an internet-visible app acts as no one', async () => {
+test('an anonymous visitor of an internet-visible app still cannot change roles', async () => {
 	const t = await setup()
 
 	const callerContext: McpCallerContext = await createPackageAppCallerContext({
