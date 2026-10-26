@@ -1,0 +1,245 @@
+{
+	"when": "2026-10-26T18:38:50.500Z",
+	"results": [
+		{
+			"size": "small",
+			"stats": {
+				"fileCount": 4,
+				"tsFiles": 2,
+				"bytes": 1123
+			},
+			"languageService": {
+				"wallMsMedian": 282.134102,
+				"peakRssMbMedian": 248.3125,
+				"deltaRssMbMedian": 54.5,
+				"diagCount": 1,
+				"runs": [
+					{
+						"wallMs": 623.91615,
+						"peakRssMb": 254.11328125,
+						"deltaRssMb": 202.15625,
+						"diagCount": 1
+					},
+					{
+						"wallMs": 221.24925600000006,
+						"peakRssMb": 240.96484375,
+						"deltaRssMb": 54.5,
+						"diagCount": 1
+					},
+					{
+						"wallMs": 282.134102,
+						"peakRssMb": 248.3125,
+						"deltaRssMb": 9.0390625,
+						"diagCount": 1
+					}
+				]
+			},
+			"tsrsWasm": {
+				"wallMsMedian": 27.833057000000053,
+				"peakRssMbMedian": 266.28515625,
+				"deltaRssMbMedian": 11.7421875,
+				"linearMemoryMiBMedian": 97.25,
+				"diagCount": 1,
+				"exitCode": 2,
+				"runs": [
+					{
+						"wallMs": 90.29182500000002,
+						"peakRssMb": 265.73828125,
+						"deltaRssMb": 27.1328125,
+						"diagCount": 1,
+						"memoryBytes": 101974016,
+						"exitCode": 2
+					},
+					{
+						"wallMs": 24.54124200000001,
+						"peakRssMb": 266.28515625,
+						"deltaRssMb": 9.80078125,
+						"diagCount": 1,
+						"memoryBytes": 101974016,
+						"exitCode": 2
+					},
+					{
+						"wallMs": 27.833057000000053,
+						"peakRssMb": 268.203125,
+						"deltaRssMb": 11.7421875,
+						"diagCount": 1,
+						"memoryBytes": 101974016,
+						"exitCode": 2
+					}
+				]
+			},
+			"parity": {
+				"lsCount": 1,
+				"tsrsCount": 1,
+				"sharedCount": 1,
+				"onlyLanguageService": [],
+				"onlyTsrs": []
+			},
+			"versions": {
+				"typescript": "6.0.3",
+				"workerBundler": "0.2.5",
+				"tsrsWasm": "0.20.0-ts7.1.0-beta"
+			}
+		},
+		{
+			"size": "medium",
+			"stats": {
+				"fileCount": 33,
+				"tsFiles": 30,
+				"bytes": 11921
+			},
+			"languageService": {
+				"wallMsMedian": 293.21641,
+				"peakRssMbMedian": 334.16015625,
+				"deltaRssMbMedian": 28.26953125,
+				"diagCount": 1,
+				"runs": [
+					{
+						"wallMs": 338.2713900000001,
+						"peakRssMb": 295.01953125,
+						"deltaRssMb": 28.26953125,
+						"diagCount": 1
+					},
+					{
+						"wallMs": 293.21641,
+						"peakRssMb": 334.16015625,
+						"deltaRssMb": 48.890625,
+						"diagCount": 1
+					},
+					{
+						"wallMs": 274.95441400000004,
+						"peakRssMb": 337.0078125,
+						"deltaRssMb": 12.5,
+						"diagCount": 1
+					}
+				]
+			},
+			"tsrsWasm": {
+				"wallMsMedian": 34.63880199999994,
+				"peakRssMbMedian": 348.23046875,
+				"deltaRssMbMedian": 10.953125,
+				"linearMemoryMiBMedian": 97.25,
+				"diagCount": 1,
+				"exitCode": 2,
+				"runs": [
+					{
+						"wallMs": 43.06134199999997,
+						"peakRssMb": 352.00390625,
+						"deltaRssMb": 14.99609375,
+						"diagCount": 1,
+						"memoryBytes": 101974016,
+						"exitCode": 2
+					},
+					{
+						"wallMs": 34.63880199999994,
+						"peakRssMb": 345.2890625,
+						"deltaRssMb": 9.69921875,
+						"diagCount": 1,
+						"memoryBytes": 101974016,
+						"exitCode": 2
+					},
+					{
+						"wallMs": 30.245870000000195,
+						"peakRssMb": 348.23046875,
+						"deltaRssMb": 10.953125,
+						"diagCount": 1,
+						"memoryBytes": 101974016,
+						"exitCode": 2
+					}
+				]
+			},
+			"parity": {
+				"lsCount": 1,
+				"tsrsCount": 1,
+				"sharedCount": 1,
+				"onlyLanguageService": [],
+				"onlyTsrs": []
+			},
+			"versions": {
+				"typescript": "6.0.3",
+				"workerBundler": "0.2.5",
+				"tsrsWasm": "0.20.0-ts7.1.0-beta"
+			}
+		},
+		{
+			"size": "large",
+			"stats": {
+				"fileCount": 215,
+				"tsFiles": 213,
+				"bytes": 96096
+			},
+			"languageService": {
+				"wallMsMedian": 440.29550599999993,
+				"peakRssMbMedian": 385.703125,
+				"deltaRssMbMedian": 9.46484375,
+				"diagCount": 1,
+				"runs": [
+					{
+						"wallMs": 540.4873600000001,
+						"peakRssMb": 385.703125,
+						"deltaRssMb": 48,
+						"diagCount": 1
+					},
+					{
+						"wallMs": 440.29550599999993,
+						"peakRssMb": 385.52734375,
+						"deltaRssMb": 9.46484375,
+						"diagCount": 1
+					},
+					{
+						"wallMs": 417.42841499999986,
+						"peakRssMb": 386.22265625,
+						"deltaRssMb": 8.8203125,
+						"diagCount": 1
+					}
+				]
+			},
+			"tsrsWasm": {
+				"wallMsMedian": 58.4028159999998,
+				"peakRssMbMedian": 393.62109375,
+				"deltaRssMbMedian": 12.5234375,
+				"linearMemoryMiBMedian": 101.8125,
+				"diagCount": 1,
+				"exitCode": 2,
+				"runs": [
+					{
+						"wallMs": 70.50373800000034,
+						"peakRssMb": 395.03125,
+						"deltaRssMb": 16.67578125,
+						"diagCount": 1,
+						"memoryBytes": 106758144,
+						"exitCode": 2
+					},
+					{
+						"wallMs": 58.4028159999998,
+						"peakRssMb": 393.62109375,
+						"deltaRssMb": 12.5234375,
+						"diagCount": 1,
+						"memoryBytes": 106758144,
+						"exitCode": 2
+					},
+					{
+						"wallMs": 54.76567799999975,
+						"peakRssMb": 392.79296875,
+						"deltaRssMb": 12.32421875,
+						"diagCount": 1,
+						"memoryBytes": 106758144,
+						"exitCode": 2
+					}
+				]
+			},
+			"parity": {
+				"lsCount": 1,
+				"tsrsCount": 1,
+				"sharedCount": 1,
+				"onlyLanguageService": [],
+				"onlyTsrs": []
+			},
+			"versions": {
+				"typescript": "6.0.3",
+				"workerBundler": "0.2.5",
+				"tsrsWasm": "0.20.0-ts7.1.0-beta"
+			}
+		}
+	]
+}

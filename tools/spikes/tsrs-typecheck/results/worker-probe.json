@@ -1,0 +1,40 @@
+{
+	"when": "2026-10-26T18:38:58.866Z",
+	"port": 8799,
+	"healthOk": true,
+	"wallMs": 88,
+	"status": 200,
+	"body": {
+		"ok": true,
+		"wallMs": 75,
+		"exitCode": 2,
+		"memoryBytes": 101842944,
+		"memoryMiB": 97.125,
+		"diagCount": 1,
+		"diagnostics": [
+			{
+				"fileName": "/pkg/src/index.ts",
+				"pos": 82,
+				"end": 93,
+				"startPosition": {
+					"line": 1,
+					"character": 13
+				},
+				"endPosition": {
+					"line": 1,
+					"character": 24
+				},
+				"sourceLines": [
+					{
+						"line": 1,
+						"text": "export const intentional: number = \"bad\" as unknown as string;\n"
+					}
+				],
+				"code": 2322,
+				"category": 1,
+				"text": "Type 'string' is not assignable to type 'number'."
+			}
+		],
+		"stderr": ""
+	}
+}

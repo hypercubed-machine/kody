@@ -1,0 +1,55 @@
+{
+	"when": "2026-10-26T18:39:31.842Z",
+	"wasmBytes": 9950001,
+	"wasmMiB": 9.489060401916504,
+	"median": {
+		"compileMs": 14.771703000000002,
+		"checkMs": 271.601611,
+		"wallMs": 286.095118,
+		"wallExternalMs": 323.669853,
+		"memoryBytes": 121569280,
+		"memoryMiB": 115.9375
+	},
+	"samples": [
+		{
+			"compileMs": 16.004265,
+			"checkMs": 266.8258,
+			"wallMs": 282.830065,
+			"memoryBytes": 121569280,
+			"exitCode": 0,
+			"wallExternalMs": 319.214177
+		},
+		{
+			"compileMs": 15.087178999999999,
+			"checkMs": 272.61497499999996,
+			"wallMs": 287.702154,
+			"memoryBytes": 121569280,
+			"exitCode": 0,
+			"wallExternalMs": 323.75213
+		},
+		{
+			"compileMs": 14.493506999999997,
+			"checkMs": 271.601611,
+			"wallMs": 286.095118,
+			"memoryBytes": 121569280,
+			"exitCode": 0,
+			"wallExternalMs": 323.669853
+		},
+		{
+			"compileMs": 14.771703000000002,
+			"checkMs": 274.15872,
+			"wallMs": 288.930423,
+			"memoryBytes": 121569280,
+			"exitCode": 0,
+			"wallExternalMs": 327.210236
+		},
+		{
+			"compileMs": 14.085262,
+			"checkMs": 266.729082,
+			"wallMs": 280.814344,
+			"memoryBytes": 121569280,
+			"exitCode": 0,
+			"wallExternalMs": 317.6525159999999
+		}
+	]
+}

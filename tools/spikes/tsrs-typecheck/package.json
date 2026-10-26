@@ -1,0 +1,19 @@
+{
+  "name": "@kody-internal/tsrs-typecheck-spike",
+  "private": true,
+  "type": "module",
+  "description": "Research spike: compare @tsrs/wasm vs worker-bundler TypeScript language service. Not for production.",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@tsrs/wasm": "0.20.0-ts7.1.0-beta"
+  },
+  "scripts": {
+    "fixtures": "node ./fixtures/build-fixtures.mjs",
+    "bench:node": "npm run fixtures && node --expose-gc ./bench-node.mjs",
+    "bench:cold": "node ./bench-cold-start.mjs",
+    "worker:prepare": "node ./worker/prepare-vendor.mjs",
+    "worker:probe": "node ./worker/probe.mjs"
+  }
+}
