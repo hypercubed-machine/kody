@@ -3,7 +3,11 @@ import { toolCliEntryFiles } from './tools/knip-tool-entries.ts'
 
 export default defineConfig({
 	include: ['files', 'exports', 'types'],
-	ignore: ['packages/cli/**'],
+	ignore: [
+		'packages/cli/**',
+		// Research harnesses with their own package.json / wrangler entries.
+		'tools/spikes/**',
+	],
 	workspaces: {
 		'.': {
 			entry: [
