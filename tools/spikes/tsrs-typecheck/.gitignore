@@ -1,8 +1,5 @@
 node_modules/
 package-lock.json
-fixtures/small/
-fixtures/medium/
-fixtures/large/
 worker/vendor-runtime/
 worker/dist/
 worker/.wrangler/

@@ -149,7 +149,10 @@ function compareParity(lsDiags, tsrsDiags) {
 }
 
 async function benchSize(size) {
-	const fixtureDir = join(here, 'fixtures', size)
+	const fixtureRoot =
+		process.env.TSRS_SPIKE_FIXTURE_ROOT ??
+		join('/tmp', 'kody-tsrs-typecheck-fixtures')
+	const fixtureDir = join(fixtureRoot, size)
 	const { relativeFiles, absoluteFiles, absoluteRoot } =
 		loadFixtureFiles(fixtureDir)
 	const stats = countFixtureStats(relativeFiles)

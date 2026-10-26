@@ -5,9 +5,11 @@
  */
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const root = dirname(fileURLToPath(import.meta.url))
+// Keep generated .ts trees out of tools/** typecheck (intentional errors).
+const root =
+	process.env.TSRS_SPIKE_FIXTURE_ROOT ??
+	join('/tmp', 'kody-tsrs-typecheck-fixtures')
 
 const tsconfig = {
 	compilerOptions: {

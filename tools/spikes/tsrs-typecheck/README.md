@@ -44,7 +44,9 @@ through `/typecheck`.
 
 ## Fixtures
 
-Synthetic only (`fixtures/build-fixtures.mjs`):
+Synthetic only (`fixtures/build-fixtures.mjs`). Trees are written under
+`/tmp/kody-tsrs-typecheck-fixtures` (override with `TSRS_SPIKE_FIXTURE_ROOT`) so
+intentional type errors are not picked up by repo `tools` typecheck.
 
 - **small**: one callable + `kody:runtime` stub + intentional error
 - **medium**: ~20 modules, jobs, zod type stub, intentional error
