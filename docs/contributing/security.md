@@ -363,8 +363,8 @@ unprefixed name in `kody.app.cookies.clientReadable`:
 
 Names match exactly and case-sensitively. Exempted cookies stay as set and
 continue to appear in the owner's dashboard. If page scripts do not need to read
-a cookie, renaming it to a name that does not look like auth or session state is
-an alternative.
+a cookie, keep HttpOnly on it. Use `clientReadable` or a name that does not look
+like auth or session state only for cookies that page scripts must read.
 
 Sibling subdomains also stay **same-site** with each other until the domain is
 on the Public Suffix List, so a `SameSite=Lax` cookie still attaches to their

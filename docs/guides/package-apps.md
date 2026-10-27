@@ -1344,9 +1344,9 @@ the Kody cookie prefix in `kody.app.cookies.clientReadable`:
 ```
 
 Names in this list are exact and case-sensitive. Exempted cookies stay as set
-and still appear in the owner's dashboard. If page scripts do not need to read
-the cookie, renaming it to a name that does not look like auth or session state
-is an alternative.
+and still appear in the owner's dashboard. If page scripts do not need to read a
+cookie, keep HttpOnly on it. Use `clientReadable` or a name that does not look
+like auth or session state only for cookies that page scripts must read.
 
 You can run your own login and OAuth flow, store your own tokens, and choose how
 to authenticate in app code: import `hasScope` from `kody:runtime`, then use
