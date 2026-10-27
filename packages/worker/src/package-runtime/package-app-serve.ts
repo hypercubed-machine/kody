@@ -39,6 +39,10 @@ import {
 	scrubPackageAppSetCookieDomains,
 } from '#worker/package-runtime/package-app-set-cookie.ts'
 import {
+	enforcePackageAppCookieHttpOnly,
+	recordPackageAppCookieFindings,
+} from '#worker/package-runtime/package-app-cookie-httponly.ts'
+import {
 	filterPackageAppRequestCookies,
 	packageAppCookiePrefix,
 } from '#worker/package-runtime/package-app-cookie-prefix.ts'
@@ -1349,7 +1353,32 @@ export async function servePackageAppRequest(input: {
 				(origin) => origin.hostname,
 			),
 		})
-		const filtered = filterPackageAppSetCookies(scrubbed.response, cookiePrefix)
+		const enforced = enforcePackageAppCookieHttpOnly(scrubbed.response)
+		if (enforced.findings.length > 0) {
+			console.warn('package-app-cookie-httponly', {
+				hostname: requestUrl.hostname,
+				pathname: requestUrl.pathname,
+				packageId: savedPackage.id,
+				findings: enforced.findings,
+			})
+			const warningWrite = recordPackageAppCookieFindings({
+				db: env.APP_DB,
+				packageId: savedPackage.id,
+				findings: enforced.findings,
+				now: Date.now(),
+			}).catch((error) => {
+				console.warn('package-app-cookie-warning-record-failed', {
+					packageId: savedPackage.id,
+					error: getErrorMessage(error),
+				})
+			})
+			try {
+				scheduleWorkerWaitUntil(warningWrite)
+			} catch {
+				void warningWrite
+			}
+		}
+		const filtered = filterPackageAppSetCookies(enforced.response, cookiePrefix)
 		logPackageAppSetCookieNamesDropped({
 			hostname: requestUrl.hostname,
 			pathname: requestUrl.pathname,

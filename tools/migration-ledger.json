@@ -691,6 +691,10 @@
 		{
 			"filename": "0187-invite-link-label-last-used-teams.sql",
 			"sha256": "76e1d1039763217904b695d146e39b677d426185a5a990da535bed5b13090d89"
+		},
+		{
+			"filename": "0188-package-app-cookie-warnings.sql",
+			"sha256": "a5470e3405f1f379c82d37285e1f6731e8b070e272066166a056039916511f8d"
 		}
 	]
 }

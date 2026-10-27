@@ -123,6 +123,25 @@ const mockModule = vi.hoisted(() => ({
 	})),
 }))
 
+const cookieWarningMock = vi.hoisted(() => ({
+	record: vi.fn(async (..._args: Array<unknown>) => undefined),
+}))
+
+vi.mock(
+	'#worker/package-runtime/package-app-cookie-httponly.ts',
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import('#worker/package-runtime/package-app-cookie-httponly.ts')
+			>()
+		return {
+			...actual,
+			recordPackageAppCookieFindings: (...args: Array<unknown>) =>
+				cookieWarningMock.record(...args),
+		}
+	},
+)
+
 vi.mock('#worker/run-records/service.ts', async (importOriginal) => ({
 	...(await importOriginal<Record<string, unknown>>()),
 	beginRunRecord: (...args: Array<unknown>) =>
@@ -627,6 +646,46 @@ test('package-app serve filters response cookies and inbound cookies by package 
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'package-app-set-cookie-name-dropped',
 		expect.objectContaining({ dropped: ['other'] }),
+	)
+})
+
+test('package-app serve adds HttpOnly to author auth cookies and records a finding', async () => {
+	const fixture = seedFixture()
+	const prefix = await packageAppCookiePrefix(fixture.savedPackage.id)
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: { 'Set-Cookie': `${prefix}session=x; Path=/` },
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld()
+
+	expect(response.headers.getSetCookie()).toContain(
+		`${prefix}session=x; Path=/; HttpOnly`,
+	)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.objectContaining({
+			packageId: fixture.savedPackage.id,
+			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
+		}),
+	)
+	expect(cookieWarningMock.record).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId: fixture.savedPackage.id,
+			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
+		}),
 	)
 })
 

@@ -1318,6 +1318,11 @@ share an origin, so client JavaScript can read cookies from sibling apps with
 `document.cookie`; mark session cookies `HttpOnly` and use `Secure` and an
 appropriate `SameSite` value.
 
+Kody appends HttpOnly to `Set-Cookie` headers it identifies as auth or session
+cookies. Other cookies without HttpOnly are left unchanged, and their names
+appear in the package owner's dashboard so you can decide whether to add the
+flag yourself.
+
 You can run your own login and OAuth flow, store your own tokens, and choose how
 to authenticate in app code: import `hasScope` from `kody:runtime`, then use
 `hasScope(request, 'need:<key>')` before calling `credential.visitor('<key>')`
