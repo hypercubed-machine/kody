@@ -29,7 +29,7 @@ export function PackageCookieWarningsCallout(props: {
 						</div>
 						<p css={statusCss}>
 							{warning.reason === 'added_httponly'
-								? 'Kody added HttpOnly because this looks like a sign-in or session cookie. Set it yourself so your app matches what browsers receive.'
+								? 'Kody added HttpOnly because this looks like a sign-in or session cookie. Set it yourself so your app matches what browsers receive. If your page scripts must read it, list it in kody.app.cookies.clientReadable.'
 								: 'Not changed. Add HttpOnly unless your page scripts need to read this cookie.'}
 						</p>
 					</li>

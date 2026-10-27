@@ -35,11 +35,21 @@ function cookieNameSegments(cookieName: string) {
 /**
  * The single identification rule for package-app authentication cookies.
  */
-export function isPackageAppAuthCookie(input: { cookieName: string }): boolean {
+export function isPackageAppAuthCookie(input: {
+	cookieName: string
+	clientReadable?: ReadonlyArray<string>
+}): boolean {
+	const fullCookieName = input.cookieName
 	const cookieName = input.cookieName.replace(
 		/^(?:__Host-|__Secure-)?__kapp_[0-9a-f]{12}_/,
 		'',
 	)
+	if (
+		input.clientReadable?.includes(cookieName) ||
+		input.clientReadable?.includes(fullCookieName)
+	) {
+		return false
+	}
 	const segments = cookieNameSegments(cookieName)
 	if (segments.some((segment) => segment === 'csrf' || segment === 'xsrf')) {
 		return false
@@ -130,7 +140,10 @@ function responseWithSetCookies(
 	return rebuilt
 }
 
-export function enforcePackageAppCookieHttpOnly(response: Response): {
+export function enforcePackageAppCookieHttpOnly(
+	response: Response,
+	options: { clientReadable?: ReadonlyArray<string> } = {},
+): {
 	response: Response
 	findings: Array<PackageAppCookieFinding>
 } {
@@ -153,7 +166,10 @@ export function enforcePackageAppCookieHttpOnly(response: Response): {
 			continue
 		}
 		const cookieName = packageAppCookieName(cookie)
-		const isAuthCookie = isPackageAppAuthCookie({ cookieName })
+		const isAuthCookie = isPackageAppAuthCookie({
+			cookieName,
+			clientReadable: options.clientReadable,
+		})
 		if (isAuthCookie) {
 			rewritten.push(`${cookie}; HttpOnly`)
 			changed = true

@@ -60,6 +60,7 @@ import {
 	resolveSavedPackageForPackageAppSlug,
 } from '#worker/package-invocations/module-artifacts.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
+import { getPackageAppClientReadableCookieNames } from '#worker/package-registry/manifest.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
@@ -1085,6 +1086,7 @@ export async function servePackageAppRequest(input: {
 	let forwardedRequest: Request
 	let entrypoint: { fetch(request: Request): Promise<Response> }
 	let servedPublishedCommit: string | null = null
+	let clientReadableCookieNames: ReadonlyArray<string> = []
 	let visitNonce: string | null = null
 	try {
 		const [packageManifest, callerContext] = await Promise.all([
@@ -1102,6 +1104,9 @@ export async function servePackageAppRequest(input: {
 				packageId: savedPackage.id,
 			}),
 		])
+		clientReadableCookieNames = getPackageAppClientReadableCookieNames(
+			packageManifest.manifest,
+		)
 		const refusal = refuseUnapprovedAnonymousServe({
 			visitor,
 			approvedPublishedCommit: input.approvedPublishedCommit,
@@ -1354,7 +1359,9 @@ export async function servePackageAppRequest(input: {
 			),
 		})
 		const filtered = filterPackageAppSetCookies(scrubbed.response, cookiePrefix)
-		const enforced = enforcePackageAppCookieHttpOnly(filtered.response)
+		const enforced = enforcePackageAppCookieHttpOnly(filtered.response, {
+			clientReadable: clientReadableCookieNames,
+		})
 		if (enforced.findings.length > 0) {
 			console.warn('package-app-cookie-httponly', {
 				hostname: requestUrl.hostname,

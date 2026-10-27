@@ -42,7 +42,7 @@ test('renders both warning types, remediation copy, and cookie names only', asyn
 	expect(html).toContain('__kapp_a_session')
 	expect(html).toContain('__kapp_a_theme')
 	expect(html).toContain(
-		'Kody added HttpOnly because this looks like a sign-in or session cookie. Set it yourself so your app matches what browsers receive.',
+		'Kody added HttpOnly because this looks like a sign-in or session cookie. Set it yourself so your app matches what browsers receive. If your page scripts must read it, list it in kody.app.cookies.clientReadable.',
 	)
 	expect(html).toContain(
 		'Not changed. Add HttpOnly unless your page scripts need to read this cookie.',

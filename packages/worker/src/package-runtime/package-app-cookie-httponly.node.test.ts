@@ -56,6 +56,31 @@ test('classifies package-app auth cookies with the single naming rule', () => {
 	]) {
 		expect(isPackageAppAuthCookie({ cookieName }), cookieName).toBe(false)
 	}
+
+	expect(
+		isPackageAppAuthCookie({
+			cookieName: 'session',
+			clientReadable: ['session'],
+		}),
+	).toBe(false)
+	expect(
+		isPackageAppAuthCookie({
+			cookieName: '__Host-__kapp_0123456789ab_session',
+			clientReadable: ['session'],
+		}),
+	).toBe(false)
+	expect(
+		isPackageAppAuthCookie({
+			cookieName: 'session',
+			clientReadable: ['Session'],
+		}),
+	).toBe(true)
+	expect(
+		isPackageAppAuthCookie({
+			cookieName: 'session',
+			clientReadable: ['theme'],
+		}),
+	).toBe(true)
 })
 
 test('appends HttpOnly without changing the existing cookie attributes', () => {
@@ -138,6 +163,19 @@ test('returns the same response when no cookie header changes', () => {
 	expect(result.response).toBe(response)
 	expect(result.findings).toEqual([
 		{ cookieName: 'theme', reason: 'missing_httponly' },
+	])
+})
+
+test('leaves an exempted auth cookie unchanged and records its finding', () => {
+	const original = 'session=value; Path=/; SameSite=Lax'
+	const response = responseWithCookies([original])
+	const result = enforcePackageAppCookieHttpOnly(response, {
+		clientReadable: ['session'],
+	})
+	expect(result.response).toBe(response)
+	expect(result.response.headers.getSetCookie()).toEqual([original])
+	expect(result.findings).toEqual([
+		{ cookieName: 'session', reason: 'missing_httponly' },
 	])
 })
 

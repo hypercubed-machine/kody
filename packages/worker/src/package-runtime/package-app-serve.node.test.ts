@@ -256,7 +256,7 @@ vi.mock('#worker/package-runtime/package-app.ts', () => ({
 
 type FixtureOptions = {
 	kodyId?: string
-	app?: Record<string, string>
+	app?: Record<string, unknown>
 }
 
 function createFixture(options: FixtureOptions = {}) {
@@ -692,6 +692,62 @@ test('package-app serve adds HttpOnly to author auth cookies and records a findi
 		expect.objectContaining({
 			packageId: fixture.savedPackage.id,
 			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
+		}),
+	)
+})
+
+test('package-app serve honors client-readable cookies and protects other auth cookies', async () => {
+	const fixture = seedFixture({
+		kodyId: 'client-readable-cookie-app',
+		app: {
+			entry: './src/app.ts',
+			cookies: { clientReadable: ['theme-session'] },
+		},
+	})
+	const prefix = await packageAppCookiePrefix(fixture.savedPackage.id)
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: [
+							['Set-Cookie', `${prefix}theme-session=dark; Path=/`],
+							['Set-Cookie', `${prefix}sessionToken=token; Path=/`],
+						],
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld({
+		kodyId: fixture.savedPackage.kodyId,
+	})
+
+	expect(response.headers.getSetCookie()).toEqual([
+		`${prefix}theme-session=dark; Path=/`,
+		`${prefix}sessionToken=token; Path=/; HttpOnly`,
+	])
+	const findings = [
+		{ cookieName: `${prefix}theme-session`, reason: 'missing_httponly' },
+		{ cookieName: `${prefix}sessionToken`, reason: 'added_httponly' },
+	]
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.objectContaining({
+			packageId: fixture.savedPackage.id,
+			findings,
+		}),
+	)
+	expect(cookieWarningMock.record).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId: fixture.savedPackage.id,
+			findings,
 		}),
 	)
 })

@@ -1321,7 +1321,27 @@ appropriate `SameSite` value.
 Kody appends HttpOnly to `Set-Cookie` headers it identifies as auth or session
 cookies. Other cookies without HttpOnly are left unchanged, and their names
 appear in the package owner's dashboard so you can decide whether to add the
-flag yourself.
+flag yourself. If page scripts must read a cookie that looks like auth or
+session state, list its name without the Kody cookie prefix in
+`kody.app.cookies.clientReadable`:
+
+```json
+{
+	"kody": {
+		"app": {
+			"entry": "./src/app.ts",
+			"cookies": {
+				"clientReadable": ["theme-session"]
+			}
+		}
+	}
+}
+```
+
+Names in this list are exact and case-sensitive. Exempted cookies stay as set
+and still appear in the owner's dashboard. If page scripts do not need to read
+the cookie, renaming it to a name that does not look like auth or session state
+is an alternative.
 
 You can run your own login and OAuth flow, store your own tokens, and choose how
 to authenticate in app code: import `hasScope` from `kody:runtime`, then use
