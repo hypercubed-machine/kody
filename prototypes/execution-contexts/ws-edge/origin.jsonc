@@ -1,0 +1,14 @@
+{
+	"name": "ecp-proto-origin",
+	"main": "origin.js",
+	"compatibility_date": "2026-04-16",
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "EC_SESSION",
+				"class_name": "ExecutionContextSessionV1",
+				"script_name": "ecp-proto-platform",
+			},
+		],
+	},
+}

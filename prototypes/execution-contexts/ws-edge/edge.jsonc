@@ -1,0 +1,12 @@
+{
+	"name": "ecp-proto-edge",
+	"main": "edge.js",
+	"compatibility_date": "2026-04-16",
+	"services": [
+		{
+			"binding": "KODY_API",
+			"service": "ecp-proto-origin",
+			"entrypoint": "KodyApi",
+		},
+	],
+}

@@ -1,0 +1,13 @@
+{
+	"name": "ecp-proto-platform",
+	"main": "platform.js",
+	"compatibility_date": "2026-04-16",
+	"durable_objects": {
+		"bindings": [
+			{ "name": "EC_SESSION", "class_name": "ExecutionContextSessionV1" },
+		],
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["ExecutionContextSessionV1"] },
+	],
+}
