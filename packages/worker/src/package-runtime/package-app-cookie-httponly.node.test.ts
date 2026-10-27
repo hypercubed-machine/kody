@@ -95,6 +95,24 @@ test('appends HttpOnly without changing the existing cookie attributes', () => {
 	])
 })
 
+test('classifies the full cookie name before truncating its finding', () => {
+	const cookieName = `__kapp_0123456789ab_${'a'.repeat(130)}_session`
+	const result = enforcePackageAppCookieHttpOnly(
+		responseWithCookies([`${cookieName}=v; Path=/`]),
+	)
+
+	expect(result.response.headers.getSetCookie()).toEqual([
+		`${cookieName}=v; Path=/; HttpOnly`,
+	])
+	expect(result.findings).toEqual([
+		{
+			cookieName: cookieName.slice(0, 128),
+			reason: 'added_httponly',
+		},
+	])
+	expect(result.findings[0]?.cookieName).toHaveLength(128)
+})
+
 test('existing HttpOnly attributes are case-insensitive and do not rebuild', () => {
 	const response = responseWithCookies([
 		'session=value; Path=/; hTtPoNlY; Secure',

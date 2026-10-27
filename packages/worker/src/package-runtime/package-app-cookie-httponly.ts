@@ -85,7 +85,7 @@ function packageAppCookieName(header: string) {
 	const pair = header.split(';', 1)[0] ?? ''
 	const equalsIndex = pair.indexOf('=')
 	if (equalsIndex <= 0) return '(unknown)'
-	return pair.slice(0, equalsIndex).trim().slice(0, 128) || '(unknown)'
+	return pair.slice(0, equalsIndex).trim() || '(unknown)'
 }
 
 function hasHttpOnlyAttribute(header: string) {
@@ -174,14 +174,20 @@ export function enforcePackageAppCookieHttpOnly(
 			rewritten.push(`${cookie}; HttpOnly`)
 			changed = true
 			if (!isDeletionCookie(cookie, now) && findings.length < 20) {
-				findings.push({ cookieName, reason: 'added_httponly' })
+				findings.push({
+					cookieName: cookieName.slice(0, 128),
+					reason: 'added_httponly',
+				})
 			}
 			continue
 		}
 
 		rewritten.push(cookie)
 		if (!isDeletionCookie(cookie, now) && findings.length < 20) {
-			findings.push({ cookieName, reason: 'missing_httponly' })
+			findings.push({
+				cookieName: cookieName.slice(0, 128),
+				reason: 'missing_httponly',
+			})
 		}
 	}
 	return {
