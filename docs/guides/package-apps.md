@@ -1319,11 +1319,16 @@ share an origin, so client JavaScript can read cookies from sibling apps with
 appropriate `SameSite` value.
 
 Kody appends HttpOnly to `Set-Cookie` headers it identifies as auth or session
-cookies. Other cookies without HttpOnly are left unchanged, and their names
-appear in the package owner's dashboard so you can decide whether to add the
-flag yourself. If page scripts must read a cookie that looks like auth or
-session state, list its name without the Kody cookie prefix in
-`kody.app.cookies.clientReadable`:
+cookies. To decide, Kody removes an optional `__Host-` or `__Secure-` prefix and
+your `cookiePrefix`, then matches name segments such as `session`, `sid`,
+`auth`, `token`, `jwt`, `login`, `remember`, `refresh`, and `access`, plus
+common framework names like `connect.sid` and `next-auth.*`. Names with a `csrf`
+or `xsrf` segment are not matched. Once Kody adds HttpOnly, page scripts can no
+longer read that cookie through `document.cookie`. Other cookies without
+HttpOnly are left unchanged, and their names appear in the package owner's
+dashboard so you can decide whether to add the flag yourself. If page scripts
+must read a cookie that looks like auth or session state, list its name without
+the Kody cookie prefix in `kody.app.cookies.clientReadable`:
 
 ```json
 {
