@@ -36,11 +36,15 @@ function cookieNameSegments(cookieName: string) {
  * The single identification rule for package-app authentication cookies.
  */
 export function isPackageAppAuthCookie(input: { cookieName: string }): boolean {
-	const segments = cookieNameSegments(input.cookieName)
+	const cookieName = input.cookieName.replace(
+		/^(?:__Host-|__Secure-)?__kapp_[0-9a-f]{12}_/,
+		'',
+	)
+	const segments = cookieNameSegments(cookieName)
 	if (segments.some((segment) => segment === 'csrf' || segment === 'xsrf')) {
 		return false
 	}
-	const normalized = input.cookieName
+	const normalized = cookieName
 		.replace(/^__(?:host|secure)-/i, '')
 		.toLowerCase()
 	if (

@@ -1353,7 +1353,8 @@ export async function servePackageAppRequest(input: {
 				(origin) => origin.hostname,
 			),
 		})
-		const enforced = enforcePackageAppCookieHttpOnly(scrubbed.response)
+		const filtered = filterPackageAppSetCookies(scrubbed.response, cookiePrefix)
+		const enforced = enforcePackageAppCookieHttpOnly(filtered.response)
 		if (enforced.findings.length > 0) {
 			console.warn('package-app-cookie-httponly', {
 				hostname: requestUrl.hostname,
@@ -1378,7 +1379,6 @@ export async function servePackageAppRequest(input: {
 				void warningWrite
 			}
 		}
-		const filtered = filterPackageAppSetCookies(enforced.response, cookiePrefix)
 		logPackageAppSetCookieNamesDropped({
 			hostname: requestUrl.hostname,
 			pathname: requestUrl.pathname,
@@ -1392,7 +1392,7 @@ export async function servePackageAppRequest(input: {
 			surface: 'package-app-serve',
 		})
 		return endPackageAppVisitWithResponse(
-			attachPackageAppServerTiming(filtered.response, serverTiming),
+			attachPackageAppServerTiming(enforced.response, serverTiming),
 			visitNonce,
 		)
 	} catch (error) {

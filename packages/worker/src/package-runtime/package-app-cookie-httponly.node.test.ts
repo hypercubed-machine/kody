@@ -20,6 +20,7 @@ function responseWithCookies(
 test('classifies package-app auth cookies with the single naming rule', () => {
 	for (const cookieName of [
 		'connect.sid',
+		'__kapp_0123456789ab_connect.sid',
 		'PHPSESSID',
 		'JSESSIONID',
 		'ASP.NET_SessionId',
@@ -32,6 +33,7 @@ test('classifies package-app auth cookies with the single naming rule', () => {
 		'_session_id',
 		'session',
 		'sessionId',
+		'__kapp_0123456789ab_sessionId',
 		'idToken',
 		'__Host-session',
 		'refreshToken',
@@ -48,6 +50,7 @@ test('classifies package-app auth cookies with the single naming rule', () => {
 		'csrf_token',
 		'xsrf-token',
 		'xsrfSession',
+		'__Host-__kapp_0123456789ab_theme',
 		'my-cookie',
 		'httponly',
 	]) {

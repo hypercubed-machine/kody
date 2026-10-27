@@ -660,7 +660,10 @@ test('package-app serve adds HttpOnly to author auth cookies and records a findi
 			getEntrypoint: () => ({
 				async fetch() {
 					return new Response('ok', {
-						headers: { 'Set-Cookie': `${prefix}session=x; Path=/` },
+						headers: [
+							['Set-Cookie', `${prefix}session=x; Path=/`],
+							['Set-Cookie', 'session=x; Path=/'],
+						],
 					})
 				},
 			}),
@@ -671,9 +674,9 @@ test('package-app serve adds HttpOnly to author auth cookies and records a findi
 
 	const response = await serveHelloWorld()
 
-	expect(response.headers.getSetCookie()).toContain(
+	expect(response.headers.getSetCookie()).toEqual([
 		`${prefix}session=x; Path=/; HttpOnly`,
-	)
+	])
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'package-app-cookie-httponly',
 		expect.objectContaining({
@@ -681,12 +684,49 @@ test('package-app serve adds HttpOnly to author auth cookies and records a findi
 			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
 		}),
 	)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['session'] }),
+	)
 	expect(cookieWarningMock.record).toHaveBeenCalledWith(
 		expect.objectContaining({
 			packageId: fixture.savedPackage.id,
 			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
 		}),
 	)
+})
+
+test('package-app serve drops unprefixed auth cookies without a finding', async () => {
+	seedFixture()
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: { 'Set-Cookie': 'session=x; Path=/' },
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld()
+
+	expect(response.headers.getSetCookie()).toEqual([])
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
+	)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['session'] }),
+	)
+	expect(cookieWarningMock.record).not.toHaveBeenCalled()
 })
 
 test('package-app serve dispatches cold and warm requests', async () => {
