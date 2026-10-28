@@ -278,6 +278,7 @@ test('native account and session reads batch user/role and flag reads into two r
 		'package-app-custom-domains': false,
 		'package-credential-suppliers': false,
 		'repo-push-queue': false,
+		'execution-contexts': false,
 		'credential-need-enforcement': false,
 	})
 	expect(Object.keys(response.payloads).sort()).toEqual([

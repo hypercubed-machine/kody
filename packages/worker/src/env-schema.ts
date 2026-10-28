@@ -272,6 +272,13 @@ export const EnvSchema = object({
 	// signs; every key verifies (rotation: docs/contributing/secret-rotation.md).
 	// Unset derives one key from COOKIE_SECRET.
 	PACKAGE_APP_TICKET_KEYS: optionalPackageAppTicketKeysSchema,
+	// Execution context frame-signing keys (platform Worker only). JSON list
+	// `[{ kid, privateKeyJwk, notAfter }]`: `notAfter` is Unix epoch ms and
+	// each JWK carries only `kty`, `crv`, `x`, `d` (Ed25519, no `alg`). The
+	// first entry signs; every unexpired entry is published. Not read yet and
+	// may be unset; the feature requires it. Rotation:
+	// docs/contributing/secret-rotation.md.
+	ECP_FRAME_SIGNING_KEYS: optionalNonEmptyStringSchema,
 	// Percent of the existing usage limit at which the package-app usage
 	// circuit breaker opens. Unset means 100 (trip exactly at the limit).
 	PACKAGE_APP_USAGE_BREAKER_LIMIT_PERCENT: optionalPositivePercentSchema,

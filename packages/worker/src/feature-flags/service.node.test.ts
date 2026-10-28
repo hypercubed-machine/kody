@@ -313,6 +313,7 @@ const registryKeys = [
 	'package-app-custom-domains',
 	'package-credential-suppliers',
 	'repo-push-queue',
+	'execution-contexts',
 	'credential-need-enforcement',
 ] as const
 

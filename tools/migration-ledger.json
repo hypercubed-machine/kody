@@ -695,6 +695,14 @@
 		{
 			"filename": "0188-package-app-cookie-warnings.sql",
 			"sha256": "a5470e3405f1f379c82d37285e1f6731e8b070e272066166a056039916511f8d"
+		},
+		{
+			"filename": "0189-execution-contexts.sql",
+			"sha256": "d520e690a22e4e982270652a3567f78ec1dfaca1b4082a28d0de17843e712fce"
+		},
+		{
+			"filename": "0190-grants-execution-context-resource-type.sql",
+			"sha256": "2ee08874e6fa1e1d7256eb642325d36de682ab1fd71ee910903ff4b47f97028d"
 		}
 	]
 }

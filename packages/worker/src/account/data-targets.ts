@@ -314,6 +314,31 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	// A person's org grants of their personal credentials.
 	{ kind: 'user_id', table: 'credential_org_grants' },
+	// Execution contexts a person registered (they operate the machine), the
+	// contexts they opted into, their attachments of contexts to other orgs,
+	// and their chains. Registration challenges are short-lived and never
+	// exported.
+	{
+		kind: 'user_columns',
+		table: 'execution_contexts',
+		columns: ['operator_user_id'],
+	},
+	{ kind: 'user_id', table: 'execution_context_opt_ins' },
+	{
+		kind: 'user_columns',
+		table: 'execution_context_org_attachments',
+		columns: ['attached_by_user_id'],
+	},
+	{ kind: 'user_id', table: 'execution_context_chains' },
+	{ kind: 'user_id', table: 'execution_context_chain_entries' },
+	{
+		kind: 'user_id',
+		table: 'execution_context_registration_challenges',
+		includeInExport: false,
+		surface: 'execution_context_registration_challenges',
+		reason:
+			'Short-lived, single-use registration challenge hashes; they are deleted on use or expiry and carry no user content.',
+	},
 	// Inventory items are per-package results owned by the package owner; runs
 	// are operator ledger rows whose initiator is attribution only.
 	{ kind: 'user_id', table: 'credential_inventory_items' },

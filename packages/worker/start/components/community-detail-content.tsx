@@ -54,6 +54,8 @@ export type CommunityDetailContentProps = {
 	treeRef?: string
 	/** Defaults to true. Plain repos pass false for the Repo mark. */
 	hasPackage?: boolean
+	/** Picked install org, kept on catalog links. */
+	installOrg?: string | null
 	/**
 	 * Plain repos only (owners/members): root package.json at the indexed
 	 * commit. Surfaces promote-to-package guidance — no website promote API.
@@ -104,6 +106,7 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 				viewerCanManageAccess,
 				active: 'repo',
 				filesHref,
+				installOrg: props.installOrg,
 				description,
 				ownerProfilePublic,
 				iconUrl: markUrl,
@@ -137,7 +140,10 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 							css={topicsCss}
 						>
 							<SiteLink
-								href={buildCommunityIndexHref({ category: listing.category })}
+								href={buildCommunityIndexHref({
+									category: listing.category,
+									installOrg: props.installOrg,
+								})}
 								data-testid="community-listing-category"
 								css={detailCategoryLinkCss}
 							>

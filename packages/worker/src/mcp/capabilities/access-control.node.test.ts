@@ -61,6 +61,7 @@ function createFlagMap(enabled: boolean): CallerFeatureFlags {
 		'package-app-custom-domains': false,
 		'package-credential-suppliers': false,
 		'repo-push-queue': false,
+		'execution-contexts': false,
 		'credential-need-enforcement': false,
 	}
 }

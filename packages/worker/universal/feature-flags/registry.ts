@@ -185,6 +185,20 @@ export const featureFlagDefinitions = [
 		// event, so exposures would not join any readout.
 	},
 	{
+		key: 'execution-contexts',
+		defaultEnabled: false,
+		defaultAudience: 'experiments_opt_in',
+		description:
+			'Execution contexts: run execute on a machine the user registered (their laptop or a build server) instead of Kody cloud, with package-style sharing and a per-user chain. Off by default; enable with audience experiments_opt_in. Delete the flag and gate sites when the feature ships.',
+		successMetric: {
+			eventType: 'dynamic_worker_day',
+			measure: 'event_count',
+			goal: 'decrease',
+			hypothesis:
+				'Runs that go to a registered execution context do not start a cloud Dynamic Worker, so experiment users burn fewer unique worker-days.',
+		},
+	},
+	{
 		key: 'credential-need-enforcement',
 		defaultEnabled: false,
 		description:

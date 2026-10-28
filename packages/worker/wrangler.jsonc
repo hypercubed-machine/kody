@@ -390,6 +390,11 @@
 						"script_name": "kody-platform",
 					},
 					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
+						"script_name": "kody-platform",
+					},
+					{
 						"class_name": "PackageRealtimeSession",
 						"name": "PACKAGE_REALTIME_SESSION",
 						"script_name": "kody-runtime",
@@ -899,6 +904,11 @@
 						"script_name": "kody-platform",
 					},
 					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
+						"script_name": "kody-platform",
+					},
+					{
 						"class_name": "PackageRealtimeSession",
 						"name": "PACKAGE_REALTIME_SESSION",
 						"script_name": "kody-runtime",
@@ -1170,6 +1180,12 @@
 					"deleted_classes": ["PackageServiceInstance"],
 					"tag": "v26",
 				},
+				// Local stand-in for the platform-owned class (ADR 0034: deployed
+				// origins bind it on kody-platform and own no class).
+				{
+					"new_sqlite_classes": ["ExecutionContextSessionV1"],
+					"tag": "v27",
+				},
 			],
 			"worker_loaders": [
 				{
@@ -1249,6 +1265,10 @@
 					{
 						"class_name": "RepoSession",
 						"name": "REPO_SESSION",
+					},
+					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
 					},
 					{
 						"class_name": "PackageRealtimeSession",

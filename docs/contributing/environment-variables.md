@@ -235,6 +235,16 @@ Worker secret (optional; see `packages/worker/src/app/package-app-ticket.ts`):
   use. Rotation:
   [secret-rotation.md](./secret-rotation.md#rotating-package_app_ticket_keys).
 
+Worker secret (optional, platform Worker only; not read yet):
+
+- `ECP_FRAME_SIGNING_KEYS`: JSON list `[{ kid, privateKeyJwk, notAfter }]` of
+  Ed25519 keys that sign execution context frames (`notAfter` in Unix epoch ms;
+  each JWK carries only `kty`, `crv`, `x`, and `d`, never `alg`). The first
+  entry signs and every unexpired entry is published. Synced to `kody-platform`
+  by `deploy.yml` from the repository Actions secret of the same name; the sync
+  skips it while it is unset. Not yet provisioned; the execution contexts
+  feature requires it.
+
 Worker variable (optional; see
 `packages/worker/src/package-runtime/package-app-usage-breaker.ts`):
 

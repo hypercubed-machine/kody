@@ -151,6 +151,18 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Approved picks name source-org credentials; an agent proposes again in the target org.',
 	),
 	credential_org_grants: keep(personOwned),
+	execution_contexts: keep(
+		'Execution contexts are machines their operator controls; they stay in the owning org and are not moved by a resource transfer.',
+	),
+	execution_context_opt_ins: keep(personOwned),
+	execution_context_org_attachments: keep(
+		'Attachments link a context to an org by its operator; they are not resources of the transferred packages.',
+	),
+	execution_context_chains: keep(personOwned),
+	execution_context_chain_entries: keep(personOwned),
+	execution_context_registration_challenges: keep(
+		'Short-lived registration challenges for a person; nothing to move.',
+	),
 	credit_debit_progress: keep(usageHistory),
 	credit_ledger_entries: keep(usageHistory),
 	credit_wallets: keep(usageHistory),

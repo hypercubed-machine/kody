@@ -11,6 +11,7 @@ export type UserOwnedDurableObjectSurface = {
 		| 'mailbox'
 		| 'repo_session_index'
 		| 'mcp'
+		| 'execution_context_session'
 	binding: string
 	/** Result key used in AccountDeletionResult.clearedDurableObjects when purged */
 	deletionResultKey: string | null
@@ -182,6 +183,16 @@ export const accountUserOwnedDurableObjectSurfaces: ReadonlyArray<UserOwnedDurab
 				'Session-keyed by the MCP SDK and not globally enumerable; durable user data is carried by D1 and user-scoped stores instead.',
 			notes:
 				'Session DO ids are indexed by user in mcp_agent_sessions and purged during account deletion.',
+		},
+		{
+			id: 'execution_context_session',
+			binding: 'EXECUTION_CONTEXT_SESSION',
+			deletionResultKey: null,
+			export: 'exclude',
+			excludeReason:
+				'Execution context connection sessions store nothing today: every connection is refused. Registrations, sharing, and chains live in D1 and follow the D1 account data targets.',
+			notes:
+				'Platform-owned ExecutionContextSessionV1. When sessions start keeping run history it is bounded (30 days, 1,000 runs per context) and this entry declares how it is exported and purged.',
 		},
 	] as const
 
